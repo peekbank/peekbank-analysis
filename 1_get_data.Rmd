@@ -42,12 +42,13 @@ We're focused on familiar words here.
 ## Get data
 
 ```{r, eval=FALSE}
-all_aoi_timepoints <- get_aoi_timepoints()
-all_stimuli <- get_stimuli()
-all_administrations <- get_administrations()
-all_subjects <- get_subjects()
-all_trial_types <- get_trial_types() 
-all_trials <- get_trials() 
+con <- connect_to_peekbank(db_version="peekbank_dev")
+all_aoi_timepoints <- get_aoi_timepoints(connection = con, rle=FALSE)
+all_stimuli <- collect(get_stimuli(connection = con))
+all_administrations <- collect(get_administrations(connection = con))
+all_subjects <- collect(get_subjects(connection = con))
+all_trial_types <- collect(get_trial_types(connection = con))
+all_trials <- collect(get_trials(connection = con))
 
 aoi_data_joined <- all_aoi_timepoints |>
   right_join(all_administrations) |>
@@ -69,14 +70,23 @@ aoi_data_joined <- all_aoi_timepoints |>
   
 # TO DO: looks like a very small number of rows get added in the join, probably a sign of an issue/ ambiguity somewhere.
 ```
+Check on number of datasets. 
+
+```{r}
+length(unique(aoi_data_joined$dataset_name))
+unique(aoi_data_joined$dataset_name)
+```
 
 
-Take only familiar word data. 
-(Note: retaining monolingual+bilingual data; only excluding Tseltal dataset)
+Take only English familiar word data. 
 
 ```{r}
 d_trial <- aoi_data_joined |>
-  filter(dataset_name != "casillas_tseltal_2015") |>
+  filter(!(dataset_name %in% c("casillas_tseltal_2015", 
+                               "byers-heinlein_2017", 
+                               "hurtado_2008", 
+                               "kartushina_2019",
+                               "weisleder_stl"))) |>
   filter(age > 12, age <= 60, 
          stimulus_novelty == "familiar",
          distractor_novelty == "familiar") |> 
@@ -84,9 +94,63 @@ d_trial <- aoi_data_joined |>
          dataset_id, stimulus_id, t_norm, age, aoi, target_label, distractor_label) |>
   mutate(correct = ifelse(aoi == "target", 1, 
                           ifelse(aoi == "distractor", 0, NA)))
+```
 
-save(d_trial, file = here("explorations","data","d_trial.Rds"))
+Do some further checks/cleanup of items. 
+
+```{r}
+sort(unique(d_trial$target_label))
+```
+
+
+```{r}
+colors <- c("red","orange","yellow","green","blue","purple","brown","white","black","pink")
+d_trial <- filter(d_trial, !(target_label %in% 
+                     c(colors, "baba", "cur","gall","kier","mog",
+                       "raby","tog","vaby","yitty", 
+                       "\'file\' must be specified", "opple","pity")))
+
+d_trial$target_label[d_trial$target_label %in% c("birdy","birdie")] <- "bird"
+d_trial$target_label[d_trial$target_label %in% c("blocks")] <- "block"
+d_trial$target_label[d_trial$target_label %in% c("carrots")] <- "carrot"
+d_trial$target_label[d_trial$target_label %in% c("diapey")] <- "diaper"
+d_trial$target_label[d_trial$target_label %in% c("doggy")] <- "dog"
+d_trial$target_label[d_trial$target_label %in% c("kitty","kittycat")] <- "cat"
+d_trial$target_label[d_trial$target_label %in% c("paci")] <- "pacifier"
+d_trial$target_label[d_trial$target_label %in% c("shoes")] <- "shoe"
+d_trial$target_label[d_trial$target_label %in% c("sippycup")] <- "sippy"
+d_trial$target_label[d_trial$target_label %in% c("socks")] <- "sock"
+```
+
+
+```{r}
+sort(unique(d_trial$distractor_label))
 
 ```
 
+
+```{r}
+d_trial <- filter(d_trial, !(distractor_label %in% 
+                     c(colors, "baba", "cur","gall","kier","mog",
+                       "raby","tog","vaby","yitty", 
+                       "\'file\' must be specified", "opple","pity")))
+
+
+d_trial$distractor_label[d_trial$distractor_label %in% c("birdy","birdie")] <- "bird"
+d_trial$distractor_label[d_trial$distractor_label %in% c("blocks")] <- "block"
+d_trial$distractor_label[d_trial$distractor_label %in% c("carrots")] <- "carrot"
+d_trial$distractor_label[d_trial$distractor_label %in% c("diapey")] <- "diaper"
+d_trial$distractor_label[d_trial$distractor_label %in% c("doggy")] <- "dog"
+d_trial$distractor_label[d_trial$distractor_label %in% c("kitty","kittycat")] <- "cat"
+d_trial$distractor_label[d_trial$distractor_label %in% c("paci")] <- "pacifier"
+d_trial$distractor_label[d_trial$distractor_label %in% c("shoes")] <- "shoe"
+d_trial$distractor_label[d_trial$distractor_label %in% c("sippycup")] <- "sippy"
+d_trial$distractor_label[d_trial$distractor_label %in% c("socks")] <- "sock"
+```
+
+
+
+```{r}
+save(d_trial, file = here("data","d_trial.Rds"))
+```
 

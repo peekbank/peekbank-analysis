@@ -13,7 +13,6 @@ output:
 ```{r setup, echo = FALSE}
 suppressPackageStartupMessages(library(here))
 suppressPackageStartupMessages(library(tidyverse))
-suppressPackageStartupMessages(library(peekbankr))
 suppressPackageStartupMessages(library(lme4))
 suppressPackageStartupMessages(library(ggpmisc))
 suppressPackageStartupMessages(library(ggrepel))
@@ -24,13 +23,14 @@ set.seed(42)
 knitr::opts_chunk$set(cache.extra = knitr::rand_seed, cache = TRUE, 
                       message=FALSE, warning=FALSE, error=FALSE)
 
-load(file = here("explorations","data","d_trial.Rds"))
+load(file = here("data","d_trial.Rds"))
 ```
 
+The goal of this portion of the analysis is to derive two measures: 1) accuracy and 2) reaction time from the underlying looking data. Along the way we will consider various decisions we could make about data cleaning and inclusion. 
 
 ## Curve summaries
 
-Now think about what the basic curve is and how to get out various measures. 
+Let's start by thinking about what the basic curve is and how to get out various measures. This curve is just averaging across every single adminstration timepoint - unweighted. The idea is just to give a sense for what the average probability function is that we're trying to measure. 
 
 ```{r}
 ggplot(d_trial, aes(x = t_norm, y = correct)) + 
@@ -40,7 +40,9 @@ ggplot(d_trial, aes(x = t_norm, y = correct)) +
 
 Seems like we want something that captures 1) the accuracy and 2) the rise coming soon after zero (RT).
 
-<!-- (Comment MZ: this summary is a little bit atypical in that the common convention is to summarize average accuracy for each trial first, and then average across items/ within subjects). This is meant e.g. to deal with missing data, e.g. the fact that different trials will have different amounts of (non-missing) looking data. Also note that we are summarizing by administrations, not subjects.) -->
+## Part 1: Accuracy
+
+Here's the distribution of average looking across all trials.
 
 ```{r}
 d_summary <- d_trial |>
