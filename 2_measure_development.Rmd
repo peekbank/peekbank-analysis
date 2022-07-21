@@ -17,6 +17,8 @@ suppressPackageStartupMessages(library(lme4))
 suppressPackageStartupMessages(library(ggpmisc))
 suppressPackageStartupMessages(library(ggrepel))
 suppressPackageStartupMessages(library(ggthemes))
+# remotes::install_github("jmgirard/agreement")
+library(agreement)
 
 # Seed for random number generation
 set.seed(42)
@@ -28,9 +30,7 @@ load(file = here("data","d_trial.Rds"))
 
 The goal of this portion of the analysis is to derive two measures: 1) accuracy and 2) reaction time from the underlying looking data. Along the way we will consider various decisions we could make about data cleaning and inclusion. 
 
-## Curve summaries
-
-Let's start by thinking about what the basic curve is and how to get out various measures. This curve is just averaging across every single adminstration timepoint - unweighted. The idea is just to give a sense for what the average probability function is that we're trying to measure. 
+Let's start by thinking about what the basic curve is and how to get out various measures. This curve is just averaging across every single administration timepoint - unweighted. The idea is just to give a sense for what the average probability function is that we're trying to measure. 
 
 ```{r}
 ggplot(d_trial, aes(x = t_norm, y = correct)) + 
@@ -40,44 +40,33 @@ ggplot(d_trial, aes(x = t_norm, y = correct)) +
 
 Seems like we want something that captures 1) the accuracy and 2) the rise coming soon after zero (RT).
 
-## Part 1: Accuracy
+We're going to try and develop measures for:
+
+1. accuracy
+2. baseline-corrected accuracy
+3. RT
+
+# Understanding ICCS
 
 Here's the distribution of average looking across all trials.
 
 ```{r}
 d_summary <- d_trial |>
-  group_by(dataset_name, dataset_id, subject_id, administration_id, stimulus_id) |>
+  group_by(dataset_name, trial_id, dataset_id, subject_id, administration_id, 
+           stimulus_id, target_label) |>
   summarise(accuracy = mean(correct[t_norm > 0], na.rm=TRUE),
-            prop_data = mean(!is.na(correct[t_norm > 0])))
+            prop_data = mean(!is.na(correct[t_norm > 0]))) |>
+  filter(!is.na(accuracy))
 
 ggplot(d_summary, aes(x = prop_data, y = accuracy)) +
   geom_point(alpha = .05)
 ```
-There's a lot of missing data and a lot of "zoners" (kids who look only at one side). Zoners are not just missing data kids.
 
-```{r}
-ggplot(filter(d_summary, prop_data > .75),
-       aes(x = accuracy)) + 
-  geom_histogram()
-```
-
-## Exclusions
-
-Should we exclude data to get a more reliable measure? Here are two different decisions we could optimize:
-
-1. exclude zoners?
-2. exclude based on prop data
-
-Let's try to figure those out. 
-
-We're going to use ICCs, with McGraw & Wong (1996). It seems like we want two-way random effects, no interaction (subjects and items are meaningful). This is type "2A." We want average agreement across units.
+We're going to use ICCs to measure reliability, using McGraw & Wong (1996). It seems like we want two-way random effects, no interaction (subjects and items are meaningful). This is type "2A." We want average agreement across units.
 
 One big decision is whether to look across stimulus items, rather than across kids. Across stimulus items returns *much* higher values. This is in part because we typically have more kids than items, and kids are sort of like "raters." 
 
 ```{r}
-#devtools::install_github("jmgirard/agreement")
-library(agreement)
-
 get_icc <- function (x, column = "accuracy", object = "stimulus") {
   if (object == "stimulus") {
     iccs <- dim_icc(x, 
@@ -86,6 +75,7 @@ get_icc <- function (x, column = "accuracy", object = "stimulus") {
                     unit = "average",
                     object = stimulus_id, 
                     rater = administration_id,
+                    trial = trial_id, 
                     score = {{column}}, 
                     bootstrap = 0)
   } else {
@@ -95,22 +85,16 @@ get_icc <- function (x, column = "accuracy", object = "stimulus") {
                     unit = "average",
                     object = administration_id, 
                     rater = stimulus_id,
+                    trial = trial_id, 
                     score = {{column}}, 
                     bootstrap = 0)
   }
   
   return(iccs$Inter_ICC)
 }
-
-iccs <- d_summary |>
-  group_by(dataset_name) |> 
-  nest() |>
-  mutate(icc_acc = unlist(map(data, get_icc))) |>
-  select(-data) |>
-  unnest(cols = c())
-
-knitr::kable(iccs, digits = 2)
 ```
+
+## Swingley and Aslin
 
 Let's look at one dataset. Here are the stimulus and administration ICCs for Swingley & Aslin (2002).
 
@@ -118,18 +102,131 @@ Let's look at one dataset. Here are the stimulus and administration ICCs for Swi
 sa <- d_summary |> 
   filter(dataset_name == "swingley_aslin_2002")
 
+sa_cleaned <- filter(sa, 
+         !(target_label %in% c("bird","duck","shoe","truck")))
+
+ggplot(sa_cleaned, 
+       aes(x = target_label, y = accuracy)) +
+  geom_jitter(alpha = .5, width = .2) + 
+  stat_summary(col = "red")
+```
+
+Now check ICCs.
+
+```{r}
+# disaggregated
 get_icc(sa, object = "stimulus")
 get_icc(sa, object = "administration")
 
-# ggplot(sa, aes(x = administration_id, y = accuracy, col = factor(stimulus_id))) +
-  # geom_jitter(alpha = .2, width = .5) + 
-  # geom_smooth(method = "lm", formula = y ~ 1, se = FALSE)
-  
+# disaggregated and cleaned
+get_icc(sa_cleaned, object = "stimulus")
+get_icc(sa_cleaned, object = "administration")
+
+
+# aggregated
+sa_agg <- sa |>
+  group_by(stimulus_id, administration_id) |>
+  summarise(accuracy = mean(accuracy))
+get_icc(sa_agg, object = "stimulus")
+get_icc(sa_agg, object = "administration")
 ```
 
-I don't understand the zero. 
+I don't understand the zero. Hypothesis - this is about not differentiating two different observations for each `stimulus_id`. 
 
-Now try to do this programmatically across all datasets.  
+```{r}
+dim_icc(sa, 
+        model = "2A", 
+        type = "agreement", 
+        unit = "average",
+        object = administration_id, 
+        rater = stimulus_id,
+        trial = trial_id, 
+        score = accuracy, 
+        bootstrap = 1000)
+```
+
+```{r}
+dim_icc(sa, 
+        model = "2A", 
+        type = "agreement", 
+        unit = "average",
+        object = stimulus_id, 
+        rater = administration_id,
+        trial = trial_id, 
+        score = accuracy, 
+        bootstrap = 1000)
+```
+
+Last question: inter vs. intra-rater reliability. 
+
+```{r}
+dim_icc(sa, 
+        model = "2A", 
+        type = "agreement", 
+        unit = "average",
+        object = administration_id, 
+        rater = stimulus_id,
+        trial = trial_id, 
+        score = accuracy, 
+        bootstrap = 0)
+dim_icc(sa_agg, 
+        model = "2A", 
+        type = "agreement", 
+        unit = "average",
+        object = administration_id, 
+        rater = stimulus_id,
+        score = accuracy, 
+        bootstrap = 0)
+```
+We're not actually sure how the **intra**-rater reliabilities are computed when you have only one observation per rater (shouldn't they be zero then?). But we're pretty clear we want the **inter**-rater reliabilities.
+
+Take-homes:
+* can't have multiple observations without a disambiguating trial label
+* average absolute inter-rater reliability is what we want
+* averaging across multiple observations increases reliabilities
+
+
+## Across datasets
+
+Note that we need to remove NaNs to make the ICCs work. 
+
+```{r}
+iccs <- d_summary |>
+  group_by(dataset_name) |> 
+  nest() |>
+  mutate(icc_stimulus_acc = unlist(map(data, ~get_icc(.x, object = "stimulus"))),
+         icc_admin_acc = unlist(map(data, ~get_icc(.x, object = "administration")))) |>
+  select(-data) |>
+  unnest(cols = c())
+
+knitr::kable(iccs, digits = 2)
+```
+
+OK, to summarize, we think we understand the ICCs. They are:
+
+* higher for administrations in datasets with lots of items (e.g., adams marchman)
+* higher for stimuli in big datasets with few items (e.g., attword)
+* reliably not NaN or 0 because we solved missing data (can't have) and repeated trials (need to mark trial id) issues. 
+
+
+# Measure 1: Accuracies
+
+There's a lot of missing data and a lot of "zoners" (kids who look only at one side). Zoners are not just missing data kids.
+
+```{r}
+ggplot(filter(d_summary, prop_data > .75),
+       aes(x = accuracy)) + 
+  geom_histogram()
+```
+
+Should we exclude data to get a more reliable measure? Here are two different decisions we could optimize:
+
+1. exclude zoners?
+2. exclude based on prop data
+
+Let's try to figure those out. 
+
+Try to do this programmatically across all datasets.  
 
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
 
@@ -159,6 +256,8 @@ excl_params <- expand_grid(zoners_included = c(FALSE, TRUE),
   unnest(col = icc)
 ```
 
+Plot resulting ICCs.
+
 ```{r}
 ggplot(excl_params,
        aes(x = exclude_less_than, y = icc, col = zoners_included)) + 
@@ -180,7 +279,7 @@ icc_window_sim <- function (t_start = 0, t_end = 4000, object)
 {
   df <- d_trial |>
     filter(t_norm > t_start, t_norm < t_end) |>
-    group_by(dataset_name, dataset_id, administration_id, stimulus_id) |>
+    group_by(dataset_name, dataset_id, administration_id, stimulus_id, trial_id) |>
     summarise(accuracy = mean(correct[t_norm > 0], na.rm=TRUE),
               prop_data = mean(!is.na(correct[t_norm > 0])))
   

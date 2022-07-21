@@ -106,8 +106,8 @@ sort(unique(d_trial$target_label))
 ```{r}
 colors <- c("red","orange","yellow","green","blue","purple","brown","white","black","pink")
 d_trial <- filter(d_trial, !(target_label %in% 
-                     c(colors, "baba", "cur","gall","kier","mog",
-                       "raby","tog","vaby","yitty", 
+                     c(colors, "baba", "cur","gall","kier","mog", "opal",
+                       "raby","tog","vaby","yitty", "shawl",
                        "\'file\' must be specified", "opple","pity")))
 
 d_trial$target_label[d_trial$target_label %in% c("birdy","birdie")] <- "bird"
@@ -131,8 +131,8 @@ sort(unique(d_trial$distractor_label))
 
 ```{r}
 d_trial <- filter(d_trial, !(distractor_label %in% 
-                     c(colors, "baba", "cur","gall","kier","mog",
-                       "raby","tog","vaby","yitty", 
+                     c(colors, "baba", "cur","gall","kier","mog", "opal",
+                       "raby","tog","vaby","yitty", "shawl",
                        "\'file\' must be specified", "opple","pity")))
 
 

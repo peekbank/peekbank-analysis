@@ -485,7 +485,7 @@ save(file = here("data","df_clean.Rds"), df_clean)
 save(file = here("data","lmm_fit.Rds"), lmm_fit)
 ```
 
-# Some model plots
+## Some model plots
 
 ```{r}
 preds <- expand_grid(
@@ -501,7 +501,8 @@ preds <- preds |>
                          newdata = preds), 
          age = exp(log_age_centered + mean(df_clean$log_age)))
 
-animate_plot <- ggplot(df_clean,
+# animate_plot <- 
+  ggplot(df_clean,
        aes(x = age, y = elogit)) + 
   geom_point(alpha = .1) + 
   geom_line(data = preds, 
@@ -515,7 +516,7 @@ animate_plot <- ggplot(df_clean,
   xlab("Age (months)") + 
   ggthemes::theme_few()
 
-ggsave(plot =animate_plot, filename = "~/Desktop/animate.pdf", height = 4, width = 6)
+# ggsave(plot =animate_plot, filename = "~/Desktop/animate.pdf", height = 4, width = 6)
 ```
 
 
@@ -545,8 +546,19 @@ df_bc <- d_trial |>
                               (distractor + .5) ), 
               elogit_bc = elogit - elogit_baseline) 
 df_bc <- df_bc[complete.cases(df_bc),]
-df_clean_bc <- filter(df_bc, accuracy > 0, accuracy < 1)
+df_clean_bc <- filter(df_bc, accuracy > 0, accuracy < 1, elogit_baseline < 4, elogit_baseline > -4)
 ```
+
+```{r}
+ggplot(df_clean_bc, aes(x = elogit)) + 
+  geom_histogram()
+ggplot(df_clean_bc, aes(x = elogit_baseline)) + 
+  geom_histogram()
+ggplot(df_clean_bc, aes(x = elogit_bc)) + 
+  geom_histogram()
+
+```
+
 
 # Target for modeling
 
@@ -559,3 +571,112 @@ ggplot(df_clean_bc, aes(x = age/12, y = elogit_bc)) +
   geom_hline(lty = 2, yintercept = 0) + 
   ggthemes::theme_few()
 ```
+
+```{r}
+df_clean_bc$log_age <- log(df_clean_bc$age)
+df_clean_bc$log_age_centered <- df_clean_bc$log_age - mean(df_clean_bc$log_age)
+
+df_clean_bc$animate_target <- df_clean_bc$target_label %in% animates
+df_clean_bc$animate_distractor <- df_clean_bc$distractor_label %in% animates
+
+lmm_fit_bc <- lmer(elogit_bc ~ log_age_centered * animate_target + 
+                  log_age_centered * animate_distractor +
+                  (1 | administration_id) + 
+                  (log_age_centered | dataset_name) + 
+                  (log_age_centered | target_label) + 
+                  (1 | distractor_label), 
+                data = df_clean_bc, 
+                control = lmerControl(optimizer="bobyqa"))
+
+preds <- expand_grid(
+  animate_target = c(TRUE, FALSE), 
+  animate_distractor = c(TRUE, FALSE), 
+  log_age_centered = seq(min(df_clean_bc$log_age_centered),
+                max(df_clean_bc$log_age_centered), .1),
+  target_label = hf_words$target_label)
+
+preds <- preds |>
+  mutate(.pred = predict(lmm_fit_bc, 
+                         type = "response",
+                         re.form = ~  (log_age_centered | target_label), 
+                         newdata = preds), 
+         age = exp(log_age_centered + mean(df_clean_bc$log_age)))
+
+ggplot(df_clean_bc,
+       aes(x = age, y = elogit)) + 
+  geom_point(alpha = .1) + 
+  geom_line(data = filter(preds, !animate_target, !animate_distractor), 
+            aes(x = age, y = .pred, col = target_label)) + 
+  geom_hline(lty = 2, yintercept = 0) + 
+  xlab("Age (months)") + 
+  ggthemes::theme_few()
+
+```
+
+
+
+```{r}
+target_ranef <-  tibble(ranef(lmm_fit)$target_label) |>
+  mutate(target_label = rownames(ranef(lmm_fit)$target_label)) |>
+  left_join(words) |>
+  rename(intercept = `(Intercept)`) |>
+  select(target_label, intercept, log_age_centered, n) 
+
+target_ranef |>
+  arrange(desc(intercept)) |>
+  filter(n>100) |>
+  knitr::kable(digits = 2)
+```
+
+
+Now look at baseline. 
+
+
+
+```{r}
+df_clean_bc$log_age <- log(df_clean_bc$age)
+df_clean_bc$log_age_centered <- df_clean_bc$log_age - mean(df_clean_bc$log_age)
+
+df_clean_bc$animate_target <- df_clean_bc$target_label %in% animates
+df_clean_bc$animate_distractor <- df_clean_bc$distractor_label %in% animates
+
+lmm_fit <- lmer(elogit_baseline ~ log_age_centered * animate_target + 
+                  log_age_centered * animate_distractor +
+                  (1 | administration_id) + 
+                  (log_age_centered | dataset_name) + 
+                  (log_age_centered | target_label) + 
+                  (1 | distractor_label), 
+                data = df_clean_bc, 
+                control = lmerControl(optimizer="bobyqa"))
+
+preds <- expand_grid(
+  animate_target = c(TRUE, FALSE), 
+  animate_distractor = c(TRUE, FALSE), 
+  log_age_centered = seq(min(df_clean_bc$log_age_centered),
+                max(df_clean_bc$log_age_centered), .1),
+  target_label = hf_words$target_label)
+
+preds <- preds |>
+  mutate(.pred = predict(lmm_fit, 
+                         type = "response",
+                         re.form = ~  (log_age_centered | target_label), 
+                         newdata = preds), 
+         age = exp(log_age_centered + mean(df_clean_bc$log_age)))
+
+ggplot(df_clean_bc,
+       aes(x = age, y = elogit_baseline)) + 
+  geom_point(alpha = .1) + 
+  geom_line(data = filter(preds, !animate_target, !animate_distractor), 
+            aes(x = age, y = .pred, col = target_label)) + 
+  geom_hline(lty = 2, yintercept = 0) + 
+  xlab("Age (months)") + 
+  ggthemes::theme_few()
+
+```
+
+```{r}
+save(file = here("data","df_clean_bc.Rds"), df_clean_bc)
+save(file = here("data","lmm_fit_bc.Rds"), lmm_fit_bc)
+
+  ```
+
