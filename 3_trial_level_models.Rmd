@@ -144,7 +144,7 @@ lmm_fit <- lmer(elogit ~ age +
                 data = df_clean)
 
 preds <- expand_grid(
-  age = seq(min(df_clean$age),max(df_clean$age),1),
+  age = seq(min(df_clean$age), max(df_clean$age),1),
   target_label = hf_words$target_label)
 
 preds <- preds |>
@@ -631,8 +631,6 @@ target_ranef |>
 
 Now look at baseline. 
 
-
-
 ```{r}
 df_clean_bc$log_age <- log(df_clean_bc$age)
 df_clean_bc$log_age_centered <- df_clean_bc$log_age - mean(df_clean_bc$log_age)
@@ -677,6 +675,5 @@ ggplot(df_clean_bc,
 ```{r}
 save(file = here("data","df_clean_bc.Rds"), df_clean_bc)
 save(file = here("data","lmm_fit_bc.Rds"), lmm_fit_bc)
-
-  ```
+```
 
