@@ -1,0 +1,218 @@
+---
+title: 'Trial analysis 3B: modeling individual RTs'
+author: "Peekbank team"
+date: "2022-08-16"
+output: html_document
+---
+
+```{r setup, echo = FALSE, message = FALSE}
+library(here)
+library(tidyverse)
+library(lme4)
+library(ggthemes)
+library(cowplot)
+
+# Seed for random number generation
+set.seed(42)
+knitr::opts_chunk$set(cache.extra = knitr::rand_seed, cache = TRUE, 
+                      message=FALSE, warning=FALSE, error=FALSE)
+
+load(file = here("data","d_rt_dt.Rds"))
+```
+
+Goal: build interesting models of RT data. 
+
+These are D-T shifts with RTs > 250 ms. 
+
+# Visualization
+
+```{r}
+ggplot(d_rt_dt, aes(x = rt)) + 
+  geom_histogram()
+```
+Logs are aesthetically nicer, though distribution is not perfectly log normal still. 
+
+```{r}
+ggplot(d_rt_dt, aes(x = rt)) + 
+  geom_histogram() + 
+  scale_x_log10()
+```
+Look by dataset. 
+
+```{r}
+ggplot(d_rt_dt, aes(x = rt)) + 
+  geom_histogram() + 
+  scale_x_log10() + 
+  facet_wrap(~dataset_name, scales = "free_y")
+```
+Feeling good about this as a dependent variable to model. 
+
+Relation with age shows some bumpiness perhaps because of variation across datasets. 
+```{r}
+ggplot(d_rt_dt, aes(x = age, y = log_rt)) + 
+  geom_jitter(alpha = .03, width = .5) + 
+  geom_smooth()
+```
+```{r}
+ggplot(d_rt_dt, aes(x = age, y = log_rt)) + 
+  geom_jitter(alpha = .1, width = .5) + 
+  geom_smooth(method = "loess", span = 1) + 
+  facet_wrap(~dataset_name)
+```
+
+# Model development
+
+Log and center age for fitting. 
+
+```{r}
+d_rt_dt$log_age <- log(d_rt_dt$age)
+d_rt_dt$log_age_centered <- d_rt_dt$log_age - mean(d_rt_dt$log_age)
+```
+
+Need to get high-frequency words for plotting purposes.
+
+```{r}
+words <- d_rt_dt |>
+  group_by(target_label) |> 
+  count() 
+
+hf_words <- words |>
+  filter(n > 100)
+```
+
+
+First things first: age vs. log age. 
+
+```{r}
+age_mod <- lmer(log_rt ~ age + 
+                  (1 | administration_id) + 
+                  (1 | dataset_name) + 
+                  (1 | target_label), 
+                data = d_rt_dt, 
+                control = lmerControl(optimizer="bobyqa"))
+
+log_age_mod <- lmer(log_rt ~ log_age_centered + 
+                  (1 | administration_id) + 
+                  (1 | dataset_name) + 
+                  (1 | target_label), 
+                data = d_rt_dt, 
+                control = lmerControl(optimizer="bobyqa"))
+
+anova(age_mod, log_age_mod)
+```
+
+Conclusion: log age is very slightly better but not so much better given the quantity of data. 
+
+```{r}
+mod <- lmer(log_rt ~ log_age_centered + 
+              (1 | administration_id) + 
+              (1 | dataset_name) + 
+              (log_age_centered | target_label), 
+            data = d_rt_dt)
+```
+Having trouble figuring out what to do about convergence.
+
+* random slopes of age by dataset have limited variance. 
+* can't get any distractor effects in there. 
+
+```{r}
+summary(mod)
+```
+
+Predicted curves. 
+
+```{r}
+preds <- expand_grid(
+  log_age_centered = seq(min(d_rt_dt$log_age_centered),
+                max(d_rt_dt$log_age_centered), .1),
+  target_label = hf_words$target_label)
+
+preds <- preds |>
+  mutate(.pred = predict(mod, 
+                         type = "response",
+                         re.form = ~  (log_age_centered | target_label), 
+                         newdata = preds), 
+         age = exp(log_age_centered + mean(d_rt_dt$log_age)))
+
+ggplot(d_rt_dt,
+       aes(x = age, y = log_rt)) + 
+  geom_point(alpha = .1) + 
+  geom_line(data = preds, 
+            aes(x = age, y = .pred, col = target_label)) + 
+  geom_label_repel(data = filter(preds, age == max(age)), 
+                   aes(x = age, y = .pred, col = target_label, 
+                       label = target_label), size = 3, max.overlaps = 50,
+                   force = .5) + 
+  xlab("Age (months)") + 
+  ggthemes::theme_few()
+```
+
+
+# Animacy analysis
+
+Animacy played a big role for accuracy. Does it for RT? 
+
+```{r}
+
+animates <- c("animal","baby","dog","bear","bird","boy", 
+              "bunny","cat","chicken","cow","dog","duck","elephant",
+              "fish","frog","giraffe","horse","kangaroo","lion","monkey",
+              "owl","pig","puppy","sheep","teddy","tiger","whale","zebra")
+
+d_rt_dt$animate_target <- d_rt_dt$target_label %in% animates
+d_rt_dt$animate_distractor <- d_rt_dt$distractor_label %in% animates
+
+animates_mod <- lmer(log_rt ~ log_age_centered * animate_target + 
+                       log_age_centered * animate_distractor + 
+              (1 | administration_id) + 
+              (1 | dataset_name) + 
+              (log_age_centered | target_label), 
+            data = d_rt_dt)
+
+summary(animates_mod)
+```
+
+Doesn't look like it, surprisingly. 
+
+```{r}
+preds <- expand_grid(
+  animate_target = c(TRUE, FALSE), 
+  animate_distractor = c(TRUE, FALSE), 
+  log_age_centered = seq(min(d_rt_dt$log_age_centered),
+                max(d_rt_dt$log_age_centered), .1),
+  target_label = hf_words$target_label)
+
+preds <- preds |>
+  mutate(.pred = predict(animates_mod, 
+                         type = "response",
+                         re.form = NA, 
+                         newdata = preds), 
+         age = exp(log_age_centered + mean(d_rt_dt$log_age)))
+
+
+ggplot(d_rt_dt,
+       aes(x = age, y = log_rt)) + 
+  geom_point(alpha = .1) + 
+  geom_line(data = preds, 
+            aes(y = .pred, col = animate_target, lty = animate_distractor), 
+            size = 1.5) + 
+  scale_x_continuous(breaks = c(12,24,36,48,60)) + 
+  scale_color_solarized(name = "Animate target") + 
+  scale_linetype(name = "Animate distractor") + 
+  ylab("Trial-level log(RT)") + 
+  xlab("Age (months)") + 
+  ggthemes::theme_few()
+```
+
+
+# Export
+
+```{r}
+lmm_fit_rt <- mod
+save(file = here("data","lmm_fit_rt.Rds"), lmm_fit_rt)
+save(file = here("data","d_rt_dt"), d_rt_dt)
+```
+
+
+```
+

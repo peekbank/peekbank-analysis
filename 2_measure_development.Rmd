@@ -104,7 +104,7 @@ sa <- d_summary |>
   filter(dataset_name == "swingley_aslin_2002")
 
 sa_cleaned <- filter(sa, 
-         !(target_label %in% c("bird","duck","shoe","truck")))
+                     !(target_label %in% c("bird","duck","shoe","truck")))
 
 ggplot(sa_cleaned, 
        aes(x = target_label, y = accuracy)) +
@@ -296,8 +296,8 @@ icc_window_sim <- function (t_start = -500, t_end = 4000, object)
 }
 
 acc_params <- expand_grid(t_start = seq(-1000,1500,500),
-                             t_end = seq(2000,4000,500),
-                             object = c("stimulus", "administration")) |>
+                          t_end = seq(2000,4000,500),
+                          object = c("stimulus", "administration")) |>
   mutate(icc = pmap(list(t_start, t_end, object), icc_window_sim)) |>
   unnest(col = icc)
 
@@ -341,8 +341,8 @@ icc_window_sim <- function (t_start = 0, t_end = 4000, object)
 }
 
 acc_params_byage <- expand_grid(t_start = seq(0,1500,500),
-                             t_end = seq(2000,4000,500),
-                             object = c("stimulus", "administration")) |>
+                                t_end = seq(2000,4000,500),
+                                object = c("stimulus", "administration")) |>
   mutate(icc = pmap(list(t_start, t_end, object), icc_window_sim)) |>
   unnest(col = icc)
 
@@ -370,13 +370,13 @@ Zooming in on Adams-Marchman, since that had very high administration reliabilit
 
 ```{r}
 qplot(data = filter(d_trial, 
-             dataset_name == "adams_marchman_2018"), 
+                    dataset_name == "adams_marchman_2018"), 
       x = t_norm, geom = "histogram")
 ```
 
 ```{r}
 am <- d_trial |>
-    filter(dataset_name == "adams_marchman_2018") |>
+  filter(dataset_name == "adams_marchman_2018") |>
   group_by(trial_id, subject_id, administration_id, 
            stimulus_id, target_label) |>
   summarise(baseline = mean(correct[t_norm < 500], na.rm=TRUE),
@@ -407,7 +407,7 @@ OK, so for this dataset it seems like within-trial baseline correction is **redu
 
 ```{r}
 sa <- d_trial |>
-    filter(dataset_name == "swingley_aslin_2002") |>
+  filter(dataset_name == "swingley_aslin_2002") |>
   group_by(trial_id, subject_id, administration_id, 
            stimulus_id, target_label) |>
   summarise(baseline = mean(correct[t_norm < 500], na.rm=TRUE),
@@ -446,7 +446,7 @@ d_summary <- d_trial |>
             elogit_baseline = log( (target_baseline + .5) / 
                                      (distractor_baseline + .5) ),
             elogit = log( (target + .5) / 
-                              (distractor + .5) ), 
+                            (distractor + .5) ), 
             elogit_bc = elogit - elogit_baseline) |>
   filter(!is.na(accuracy), !is.na(bc_accuracy), !is.na(elogit), !is.na(elogit_bc))
 
@@ -460,23 +460,23 @@ iccs <- d_summary |>
                                                    column = "accuracy",
                                                    object = "administration"))),
          icc_stimulus_bc = unlist(map(data, ~get_icc(.x, 
-                                                      column = "bc_accuracy",
-                                                      object = "stimulus"))),
+                                                     column = "bc_accuracy",
+                                                     object = "stimulus"))),
          icc_admin_bc = unlist(map(data, ~get_icc(.x, 
-                                                   column = "bc_accuracy",
-                                                   object = "administration"))),
+                                                  column = "bc_accuracy",
+                                                  object = "administration"))),
          icc_stimulus_elogit = unlist(map(data, ~get_icc(.x, 
-                                                      column = "elogit",
-                                                      object = "stimulus"))),
+                                                         column = "elogit",
+                                                         object = "stimulus"))),
          icc_admin__elogit = unlist(map(data, ~get_icc(.x, 
-                                                   column = "elogit",
-                                                   object = "administration"))),
+                                                       column = "elogit",
+                                                       object = "administration"))),
          icc_stimulus_elogitbc = unlist(map(data, ~get_icc(.x, 
-                                                      column = "elogit_bc",
-                                                      object = "stimulus"))),
+                                                           column = "elogit_bc",
+                                                           object = "stimulus"))),
          icc_admin_elogitbc = unlist(map(data, ~get_icc(.x, 
-                                                   column = "elogit_bc",
-                                                   object = "administration")))) |>
+                                                        column = "elogit_bc",
+                                                        object = "administration")))) |>
   select(-data) |>
   unnest(cols = c())
 ```
@@ -484,17 +484,17 @@ iccs <- d_summary |>
 Let's plot these. 
 
 ```{r}
-iccs_wide <- iccs |>
+iccs_long <- iccs |>
   pivot_longer(-dataset_name, names_to = "measure", values_to = "icc") |>
-  separate(measure, into = c("extra", "unit","measure")) |>
+  separate(measure, into = c("extra", "dimension","measure")) |>
   select(-extra) 
 
-ggplot(iccs_wide, 
+ggplot(iccs_long, 
        aes(x = measure, y = icc, group = dataset_name)) + 
   geom_point() +
   geom_line(alpha = .5) + 
   stat_summary(aes(group = 1), col = "red") + 
-  facet_wrap(~unit) +
+  facet_wrap(~dimension) +
   ylim(0,1) + 
   ylab("ICC") + 
   xlab("Measure")
@@ -520,15 +520,15 @@ rle_data <- d_trial %>%
   group_by(administration_id, trial_id) %>%
   summarise(lengths = rle(aoi)$lengths, 
             values = rle(aoi)$values) 
-    
+
 d_rt <- rle_data %>%
-      group_by(administration_id, trial_id) %>%
-      nest() %>%
-      mutate(data = lapply(data, get_rt)) %>%
-      unnest(cols = c(data)) %>%
-      left_join(d_trial %>%
-                  select(-t_norm, -correct, -aoi) %>%
-                  distinct())
+  group_by(administration_id, trial_id) %>%
+  nest() %>%
+  mutate(data = lapply(data, get_rt)) %>%
+  unnest(cols = c(data)) %>%
+  left_join(d_trial %>%
+              select(-t_norm, -correct, -aoi) %>%
+              distinct())
 ```
 
 How many trials have RTs for them?
@@ -568,15 +568,15 @@ ggplot(d_rt, aes(x = rt)) +
 Probably should get rid of the RTs < 250ms or so. 
 
 ```{r}
-mean(d_rt$rt<250, na.rm=TRUE)
+mean(d_rt$rt<350, na.rm=TRUE)
 ```
 
 Filter. 
 
 ```{r}
 d_rt <- filter(d_rt, 
-                  !is.na(rt), 
-                  rt > 250)
+               !is.na(rt), 
+               rt > 350)
 ```
 
 Look by age.
@@ -609,10 +609,14 @@ ggplot(d_rt,
 
 ## RT reliabilities
 
+Let's compute reliabilities now for D-T trials (standard approach, loses half of trials). 
+
 ```{r}
-rt_iccs <- d_rt |>
+d_rt_dt <- d_rt |>
   filter(shift_type == "D-T") |>
-  mutate(log_rt = log(rt)) |>
+  mutate(log_rt = log(rt)) 
+
+rt_iccs <- d_rt_dt |>
   group_by(dataset_name) |> 
   nest() |>
   mutate(stimulus_rt = 
@@ -640,7 +644,7 @@ rt_iccs_long <- rt_iccs |>
   ungroup() |>
   separate(dimension, into = c("dimension","measure")) |>
   mutate(dataset_name = fct_reorder(dataset_name, icc))
-  
+
 ```
 
 Plot. 
@@ -682,16 +686,143 @@ Is this the repeated trial thing again?
 
 ```{r}
 ps_icc <- dim_icc(ps, 
-        model = "2A", 
-        type = "agreement", 
-        unit = "average",
-        object = administration_id, 
-        rater = stimulus_id,
-        trial = trial_id, 
-        score = rt, 
-        bootstrap = 1000)
+                  model = "2A", 
+                  type = "agreement", 
+                  unit = "average",
+                  object = administration_id, 
+                  rater = stimulus_id,
+                  trial = trial_id, 
+                  score = rt, 
+                  bootstrap = 1000)
 
 summary(ps_icc)
 ```
 
 OK, we think the issue here is that we are essentially at a correlation of zero because there is so much missing data in the kid x stimulus matrix that the overlap is too low to compute ICCs. RT is sparse because you get an RT on not that many trials. 
+
+But why do we get fewer zeros when we subset to D-T trials? Let's dig into this. 
+
+Pomper SalientMe shows this pattern. 
+
+```{r}
+ps
+
+ps_dt <- ps |>
+  filter(shift_type == "D-T")
+
+get_icc(ps, object = "stimulus", column = "rt")
+get_icc(ps_dt, object = "stimulus", column = "rt")
+```
+
+Let's look at the cross between subjects and trials for each. 
+
+```{r}
+ps |> 
+  ungroup() |>
+  select(subject_id, target_label, rt) |>
+  arrange(target_label) |>
+  pivot_wider(names_from = "target_label", values_from = "rt") |>
+  arrange(subject_id)
+
+ps_dt |> 
+  ungroup() |>
+  select(subject_id, target_label, rt) |>
+  arrange(target_label) |>
+  pivot_wider(names_from = "target_label", values_from = "rt") |>
+  arrange(subject_id) 
+```
+
+So the D-T dataframe is sparser, but looks more consistent. Let's check out the distributions. 
+
+```{r}
+ggplot(ps, aes(x = rt)) + 
+  geom_histogram() + 
+  facet_wrap(~shift_type)
+```
+This is consistent with the idea that T-D shifts are trash in this dataset. Let's look at all data. 
+
+```{r}
+ggplot(d_rt, aes(x = rt)) + 
+  geom_histogram() + 
+  facet_wrap(~shift_type)
+```
+Looks well-supported that T-D RTs are different. I now feel comfortable moving forward with D-T only. 
+Let's compare ICC from RTs to ICCs from accuracy. 
+
+```{r}
+trial_ns_acc <- bind_rows(d_summary |>
+                            group_by(dataset_name, subject_id) |>
+                            count() |>
+                            group_by(dataset_name) |>
+                            summarise(n = mean(n), 
+                                      dimension = "admin"),
+                          d_summary |>
+                            group_by(dataset_name, target_label) |>
+                            count() |>
+                            group_by(dataset_name) |>
+                            summarise(n = mean(n), 
+                                      dimension = "stimulus"))
+
+trial_ns_rt <- bind_rows(d_rt_dt |>
+                           group_by(dataset_name, subject_id) |>
+                           count() |>
+                           group_by(dataset_name) |>
+                           summarise(n = mean(n), 
+                                     dimension = "admin"),
+                         bind_rows(d_rt_dt |>
+                                     group_by(dataset_name, subject_id) |>
+                                     count() |>
+                                     group_by(dataset_name) |>
+                                     summarise(n = mean(n), 
+                                               dimension = "stimulus")))
+
+acc_rt_iccs <- bind_rows(filter(iccs_long, measure == "acc") |>
+                           left_join(trial_ns_acc), 
+                         rt_iccs_long |>
+                           left_join(trial_ns_rt)) |>
+  mutate(dataset_name = fct_reorder(as.factor(dataset_name), icc))
+
+
+ggplot(acc_rt_iccs, 
+       aes(x = dataset_name, y = icc, col = measure)) +
+  geom_point(aes(size = n), 
+             position = position_dodge(width = .5)) +
+  geom_line(aes(group = measure)) + 
+  facet_wrap(~dimension) +
+  theme(axis.text.x=element_text(angle=-90))
+
+acc_rt_iccs |> 
+  arrange(dataset_name) |>
+  mutate(icc = round(icc, digits = 2), 
+         n = round(n))
+```
+
+Let's plot by N. 
+
+```{r}
+ggplot(acc_rt_iccs, 
+       aes(x = n, y = icc, col = dataset_name)) + 
+  geom_point() + 
+  geom_smooth(aes(group = 1), method = "loess", span = 10,  se = FALSE) + 
+  # scale_x_log10() +
+  facet_wrap(dimension~measure, scales = "free_x") + 
+  xlab("N trials per child/word") + 
+  ylab("Intraclass Correlation Coefficient") + 
+  ylim(0,1)
+
+```
+This is interesting! We are getting a bunch of signal about individual participants from RT, actually higher ICC than accuracies. Not so much for stimulus information, where it seems like we are doing better from accuracy. Also, as predicted the number of trials per child or per word appears to relate across datasets to the ICC (though there's lots of variance at the bottom end that presumably relates to the variation in ability across kids/variation in difficulty across words). If you choose very different words you get high reliability on that dimension (see "reliability paradoxes" idea).
+
+```{r}
+save(d_rt_dt, file= "data/d_rt_dt.Rds")
+```
+
+# Summary
+
+We learned:
+
+* use ALL THE DATA (tm) when calculating accuracies
+* don't exclude zoner trials because you think they have no signal - they add signal
+* baseline correction doesn't help increase reliability, though correcting for baseline effects decreases stimulus-level reliability - presumably because some stimulus-level reliability is driven by visual salience (e.g., animacy) not by true differences in word difficulty. 
+* RT is surprisingly reliable as a measure of participant variation (often better than accuracy) but not as good as accuracy for characterizing stimulus variation (perhaps due to the visual salience issue). 
+* log RT is not much better or much worse than regular RT. 

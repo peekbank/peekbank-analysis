@@ -23,6 +23,8 @@ load(file = here("data","df_clean.Rds"))
 load(file = here("data","lmm_fit.Rds"))
 load(file = here("data","df_clean_bc.Rds"))
 load(file = here("data","lmm_fit_bc.Rds"))
+load(file = here("data","d_rt_dt.Rds"))
+load(file = here("data","lmm_fit_rt.Rds"))
 
 ```
 
@@ -116,6 +118,7 @@ ranefs$target_label <- rownames(ranef(lmm_fit)$target_label)
 mdf <- left_join(mdf, ranefs)
 ```
 
+## Model-based comparison to AoA
 Extract "AoAs" from predicted curves. We're going to get the point at which a word crosses the elogit = 1 line as "the age of acquisition" - approx the point when the proportion accuracy hits 75%. We'll also look at the elogit value at age 36 months as different proxy. (These points are marked by the two red lines below). 
 
 ```{r}
@@ -212,7 +215,7 @@ What we see is that `ball` is consistently bad, as we observed throughout. `dog`
 
 In sum, we're not seeing ANY successes in linking peekbank to wordbank.
 
-# Baseline correction
+## Baseline corrected accuracy and AoA
 
 ```{r}
 words <- df_clean_bc |>
@@ -276,4 +279,90 @@ ggplot(filter(mdf_long, predictor == "mod_aoa_bc"),
   ggrepel::geom_label_repel(aes(label = target_label)) +
   xlab("Wordbank AoA") + 
   ylab("Peekbank baseline-corrected model measure")
+```
+
+## RT to AoA
+
+Let's extract our RT summaries as RT predicted at 36 months and also AoA at 750ms.
+
+```{r}
+words <- d_rt_dt |>
+  group_by(target_label) |> 
+  count() 
+  
+hf_words = words |>
+  filter(n > 200)
+
+preds <- expand_grid(
+  log_age_centered = seq(min(d_rt_dt$log_age_centered),
+                max(d_rt_dt$log_age_centered), .1),
+  target_label = unique(d_rt_dt$target_label))
+
+preds <- preds |>
+  mutate(.pred = predict(lmm_fit_rt, 
+                         type = "response",
+                         re.form = ~  (log_age_centered | target_label), 
+                         newdata = preds), 
+         age = exp(log_age_centered + mean(df_clean$log_age)))
+
+ggplot(filter(preds, target_label %in% hf_words$target_label),
+       aes(x = age, y = .pred, col = target_label)) + 
+  geom_line() + 
+  geom_hline(lty = 3, yintercept = log(750), col = "red") + 
+  geom_vline(lty = 3, xintercept = 36, col = "red") + 
+  xlab("Age (months)") + 
+  ggthemes::theme_few()
+```
+
+Add measures. 
+
+```{r}         
+mdf <- left_join(mdf, 
+                 preds |>
+                   group_by(target_label) |>
+                   summarise(mod_aoa_rt = age[.pred < log(750)][1],
+                             mod_rt_36_mo = .pred[age > 36][1]))
+```
+
+Plot. 
+
+```{r}
+mdf_long <- mdf |> 
+  pivot_longer(cols = -c("target_label", "aoa", "n_trials"), 
+               names_to = "predictor", 
+               values_to = "value")
+
+ggplot(mdf_long, 
+       aes(x = aoa, y = value)) + 
+  geom_point(alpha = .5, aes(size = n_trials)) + 
+  geom_smooth(method = "lm") + 
+  ggpmisc::stat_correlation() + 
+  # ggrepel::geom_label_repel(aes(label = target_label)) + 
+  facet_wrap(~predictor, scales="free_y")
+```
+Subset to high frequency words. 
+
+```{r}
+ggplot(filter(mdf_long, 
+              target_label %in% words$target_label[words$n > 100]), 
+       aes(x = aoa, y = value)) + 
+  geom_point(alpha = .5, aes(size = n_trials)) + 
+  geom_smooth(method = "lm") + 
+  ggpmisc::stat_correlation() + 
+  facet_wrap(~predictor, scales="free_y") + 
+  xlab("Wordbank AoA (months)") + 
+  ylab("Predictor value")
+```
+
+
+```{r}
+ggplot(filter(mdf_long, predictor == "mod_rt_36_mo", 
+              target_label %in% words$target_label[words$n > 100]),
+       aes(x = aoa, y = value)) + 
+  geom_point(alpha = .5, aes(size = n_trials)) + 
+  geom_smooth(method = "lm") + 
+  ggpmisc::stat_correlation() + 
+  ggrepel::geom_label_repel(aes(label = target_label)) +
+  xlab("Wordbank AoA") + 
+  ylab("Peekbank model-derived log RT at 36mo")
 ```
