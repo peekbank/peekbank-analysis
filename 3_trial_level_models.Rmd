@@ -399,7 +399,7 @@ Let's add a fixed effect for animacy of target and distractor to try and soak up
 sort(unique(c(unique(df_clean$target_label),
               unique(df_clean$distractor_label))))
 
-animates <- c("anima","baby","dog","bear","bird","boy", 
+animates <- c("animal","baby","dog","bear","bird","boy", 
               "bunny","cat","chicken","cow","dog","duck","elephant",
               "fish","frog","giraffe","horse","kangaroo","lion","monkey",
               "owl","pig","puppy","sheep","teddy","tiger","whale","zebra")
