@@ -18,7 +18,7 @@ set.seed(42)
 knitr::opts_chunk$set(cache.extra = knitr::rand_seed, cache = TRUE, 
                       message=FALSE, warning=FALSE, error=FALSE)
 
-load(file = here("data","1_d_trial.Rds"))
+load(file = here("cached_intermediates","1_d_trial.Rds"))
 ```
 
 Our goal here is to model trial-level variation in accuracy for familiar word recognition across all the experiments in Peekbank. 
@@ -475,8 +475,8 @@ target_ranef |>
 Let's save the resulting model and carry it forward. 
 
 ```{r}
-save(file = here("data","3A_d_acc.Rds"), d_acc)
-save(file = here("data","3A_mod_acc.Rds"), mod_acc)
+save(file = here("cached_intermediates","3A_d_acc.Rds"), d_acc)
+save(file = here("cached_intermediates","3A_mod_acc.Rds"), mod_acc)
 ```
 
 ## Some model plots
@@ -667,7 +667,7 @@ ggplot(d_acc_bc,
 ```
 
 ```{r}
-save(file = here("data","3A_d_acc_bc.Rds"), d_acc_bc)
-save(file = here("data","3A_lmm_fit_bc.Rds"), mod_acc_bc)
+save(file = here("cached_intermediates","3A_d_acc_bc.Rds"), d_acc_bc)
+save(file = here("cached_intermediates","3A_mod_acc_bc.Rds"), mod_acc_bc)
 ```
 
