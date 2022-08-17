@@ -1,0 +1,95 @@
+---
+title: "5: Developmental analyses"
+author: "Peekbank team"
+date: "2022-08-17"
+output: html_document
+---
+
+```{r setup, echo = FALSE, message = FALSE}
+library(here)
+library(tidyverse)
+library(peekbankr)
+library(lme4)
+library(ggpmisc)
+library(ggrepel)
+library(ggthemes)
+
+# Seed for random number generation
+set.seed(42)
+knitr::opts_chunk$set(cache.extra = knitr::rand_seed, cache = TRUE, 
+                      message=FALSE, warning=FALSE, error=FALSE)
+
+load(file = here("cached_intermediates","3A_d"))
+load(file = here("cached_intermediates","3B_d_rt.Rds"))
+```
+
+# General development: Accuracy
+
+
+```{r}
+preds <- expand_grid(
+  animate_target = c(TRUE, FALSE), 
+  animate_distractor = c(TRUE, FALSE), 
+  log_age_centered = seq(min(d_acc$log_age_centered),
+                max(d_acc$log_age_centered), .1))
+
+preds <- preds |>
+  mutate(.pred = predict(lmm_fit, 
+                         type = "response",
+                         re.form = NA, 
+                         newdata = preds), 
+         age = exp(log_age_centered + mean(d_acc$log_age)))
+
+# animate_plot <- 
+  ggplot(d_acc,
+       aes(x = age, y = elogit)) + 
+  geom_point(alpha = .1) + 
+  geom_line(data = preds, 
+            aes(y = .pred, col = animate_target, lty = animate_distractor), 
+            size = 1.5) + 
+  geom_hline(lty = 2, yintercept = 0) + 
+  scale_x_continuous(breaks = c(12,24,36,48,60)) + 
+  scale_color_solarized(name = "Animate target") + 
+  scale_linetype(name = "Animate distractor") + 
+  ylab("Trial-level accuracy (elogit)") + 
+  xlab("Age (months)") + 
+  ggthemes::theme_few()
+
+# ggsave(plot =animate_plot, filename = "~/Desktop/animate.pdf", height = 4, width = 6)
+```
+
+# General developmental changes in RT:
+
+RT model: 
+
+```{r}
+mod_rt <- lmer(log_rt ~ log_age_centered +
+              (1 | administration_id) + 
+              (1 | dataset_name) + 
+              (log_age_centered | target_label), 
+            data = d_rt_dt)
+```
+
+Accuracy model:
+
+```{r}
+mod_acc <- lmer(elogit_baseline ~ log_age_centered * animate_target + 
+                  log_age_centered * animate_distractor +
+                  (1 | administration_id) + 
+                  (log_age_centered | dataset_name) + 
+                  (log_age_centered | target_label) + 
+                  (1 | distractor_label), 
+                data = df_clean_bc, 
+                control = lmerControl(optimizer="bobyqa"))
+
+
+```
+
+
+# Relation between RT and accuracy 
+
+
+## Relate measures directly
+
+
+## Relate predicted measures
