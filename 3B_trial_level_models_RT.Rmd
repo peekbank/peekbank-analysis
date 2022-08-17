@@ -208,9 +208,10 @@ ggplot(d_rt_dt,
 # Export
 
 ```{r}
-lmm_fit_rt <- mod
-save(file = here("data","lmm_fit_rt.Rds"), lmm_fit_rt)
-save(file = here("data","d_rt_dt"), d_rt_dt)
+mod_rt <- mod
+d_rt <- d_rt_dt
+save(file = here("data","3B_mod_rt.Rds"), mod_rt)
+save(file = here("data","3B_d_rt.Rds"), d_rt)
 ```
 
 

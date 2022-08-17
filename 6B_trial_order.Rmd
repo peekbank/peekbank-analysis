@@ -1,0 +1,51 @@
+---
+title: '6B: Trial order effects'
+author: "Peekbank team"
+date: "2022-08-17"
+output: html_document
+---
+
+```{r setup, echo = FALSE, message = FALSE}
+library(here)
+library(tidyverse)
+library(peekbankr)
+library(lme4)
+library(ggpmisc)
+library(ggrepel)
+library(ggthemes)
+
+# Seed for random number generation
+set.seed(42)
+knitr::opts_chunk$set(cache.extra = knitr::rand_seed, cache = TRUE, 
+                      message=FALSE, warning=FALSE, error=FALSE)
+
+load(file = here("data","3A_df_clean.Rds"))
+load(file = here("data","3B_d_rt_dt.Rds"))
+```
+
+
+RT model: 
+
+```{r}
+mod_rt <- lmer(log_rt ~ log_age_centered +
+              (1 | administration_id) + 
+              (1 | dataset_name) + 
+              (log_age_centered | target_label), 
+            data = d_rt_dt)
+```
+
+Accuracy model:
+
+```{r}
+mod_acc <- lmer(elogit_baseline ~ log_age_centered * animate_target + 
+                  log_age_centered * animate_distractor +
+                  (1 | administration_id) + 
+                  (log_age_centered | dataset_name) + 
+                  (log_age_centered | target_label) + 
+                  (1 | distractor_label), 
+                data = df_clean_bc, 
+                control = lmerControl(optimizer="bobyqa"))
+
+
+```
+
