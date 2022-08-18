@@ -517,12 +517,12 @@ Compute RTs, relying on the RLE workflow from the shiny app.
 rle_data <- d_trial %>%
   filter(any(t_norm == 0), # must have data at 0
          t_norm >= 0) %>% # only pass data after 0
-  group_by(administration_id, trial_id) %>%
+  group_by(administration_id, trial_id, trial_order) %>%
   summarise(lengths = rle(aoi)$lengths, 
             values = rle(aoi)$values) 
 
 d_rt <- rle_data %>%
-  group_by(administration_id, trial_id) %>%
+  group_by(administration_id, trial_id, trial_order) %>%
   nest() %>%
   mutate(data = lapply(data, get_rt)) %>%
   unnest(cols = c(data)) %>%
