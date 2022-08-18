@@ -7,89 +7,254 @@ output: html_document
 
 ```{r setup, echo = FALSE, message = FALSE}
 library(here)
-library(tidyverse)
 library(peekbankr)
 library(lme4)
-library(ggpmisc)
+# library(ggpmisc)
 library(ggrepel)
 library(ggthemes)
+library(glue)
+library(tidyverse)
+#also needs GGally and ggbiplot and ggpubr but one of these irresponsibly sources plyr
+
 
 # Seed for random number generation
 set.seed(42)
 knitr::opts_chunk$set(cache.extra = knitr::rand_seed, cache = TRUE, 
                       message=FALSE, warning=FALSE, error=FALSE)
 
-load(file = here("cached_intermediates","3A_d"))
+load(file = here("cached_intermediates","3A_d_acc.Rds"))
 load(file = here("cached_intermediates","3B_d_rt.Rds"))
 ```
 
+One thing that we learn from Analysis 3 that is reiterated here is that the best summaries seem to be:
+
+* elogit(accuracy) for accuracy - note this involves excluding some trials in which elogit is at floor or ceiling because of zoning. we think this doesn't help OR hurt.
+* log(age) - development follows some kind of exponential so logging makes it more linear.
+* log(rt) - reaction times are somewhat log normal in distribution.
+
+All of these variable transformations serve to "linearize" these various different measures that all have distributions that are otherwise not as amenable to modeling.
+
+Our goal here is to look at how these measures change together - both across age and across participants. 
+
 # General development: Accuracy
 
+First let's just look at average and predicted accuracy trajectories with development. 
 
 ```{r}
-preds <- expand_grid(
-  animate_target = c(TRUE, FALSE), 
-  animate_distractor = c(TRUE, FALSE), 
-  log_age_centered = seq(min(d_acc$log_age_centered),
-                max(d_acc$log_age_centered), .1))
+ms_acc <- d_acc |>
+  ungroup() |>
+  group_by(dataset_name, administration_id, age) |>
+  summarise(n_accuracy = n(), 
+            accuracy = mean(accuracy, na.rm=TRUE), 
+            elogit = mean(elogit, na.rm=TRUE)) |>
+  mutate(log_age = log(age))
 
-preds <- preds |>
-  mutate(.pred = predict(lmm_fit, 
-                         type = "response",
-                         re.form = NA, 
-                         newdata = preds), 
-         age = exp(log_age_centered + mean(d_acc$log_age)))
+labels <- data_frame(age = c(12,24,36,48), y = -1) |>
+  mutate(log_age = log(age), 
+         age_mo = paste(as.character(age), "months"))
 
-# animate_plot <- 
-  ggplot(d_acc,
-       aes(x = age, y = elogit)) + 
-  geom_point(alpha = .1) + 
-  geom_line(data = preds, 
-            aes(y = .pred, col = animate_target, lty = animate_distractor), 
-            size = 1.5) + 
-  geom_hline(lty = 2, yintercept = 0) + 
-  scale_x_continuous(breaks = c(12,24,36,48,60)) + 
-  scale_color_solarized(name = "Animate target") + 
-  scale_linetype(name = "Animate distractor") + 
-  ylab("Trial-level accuracy (elogit)") + 
-  xlab("Age (months)") + 
-  ggthemes::theme_few()
+ref_75 <- log( (75 + .5) / (25 + .5) )
 
-# ggsave(plot =animate_plot, filename = "~/Desktop/animate.pdf", height = 4, width = 6)
+ggplot(ms_acc, aes(x = log_age, y = elogit)) + 
+  geom_jitter(alpha = .1, width = .02, height = 0) + 
+  geom_smooth(method = "lm") +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_hline(yintercept = ref_75, lty = 2) +
+  annotate("text", x = log(12), y = 0, label = "50% correct", vjust = -.25, hjust = 0) +
+  annotate("text", x = log(12), y = ref_75, label = "75% correct", vjust = -.25, hjust = 0) + 
+  geom_vline(data = labels, 
+             aes(xintercept = log_age), lty = 3) + 
+  geom_text(data = labels, 
+             aes(x = log_age, y = y, label = age_mo), lty = 3, hjust = 0) + 
+  xlab("log(age)") +
+  ylab("elogit (accuracy)") + 
+  theme_few() +
+  ggtitle(glue("Accuracy increases with age (N={nrow(ms_acc)})"))
 ```
 
-# General developmental changes in RT:
 
-RT model: 
+<!-- ```{r} -->
+<!-- mod_acc <- lmer(elogit_baseline ~ log_age_centered * animate_target +  -->
+<!--                   log_age_centered * animate_distractor + -->
+<!--                   (1 | administration_id) +  -->
+<!--                   (log_age_centered | dataset_name) +  -->
+<!--                   (log_age_centered | target_label) +  -->
+<!--                   (1 | distractor_label),  -->
+<!--                 data = df_clean_bc,  -->
+<!--                 control = lmerControl(optimizer="bobyqa")) -->
+
+<!-- preds <- expand_grid( -->
+<!--   animate_target = c(TRUE, FALSE),  -->
+<!--   animate_distractor = c(TRUE, FALSE),  -->
+<!--   log_age_centered = seq(min(d_acc$log_age_centered), -->
+<!--                 max(d_acc$log_age_centered), .1)) -->
+
+<!-- preds <- preds |> -->
+<!--   mutate(.pred = predict(lmm_fit,  -->
+<!--                          type = "response", -->
+<!--                          re.form = NA,  -->
+<!--                          newdata = preds),  -->
+<!--          age = exp(log_age_centered + mean(d_acc$log_age))) -->
+
+<!-- # animate_plot <-  -->
+<!--   ggplot(d_acc, -->
+<!--        aes(x = age, y = elogit)) +  -->
+<!--   geom_point(alpha = .1) +  -->
+<!--   geom_line(data = preds,  -->
+<!--             aes(y = .pred, col = animate_target, lty = animate_distractor),  -->
+<!--             size = 1.5) +  -->
+<!--   geom_hline(lty = 2, yintercept = 0) +  -->
+<!--   scale_x_continuous(breaks = c(12,24,36,48,60)) +  -->
+<!--   scale_color_solarized(name = "Animate target") +  -->
+<!--   scale_linetype(name = "Animate distractor") +  -->
+<!--   ylab("Trial-level accuracy (elogit)") +  -->
+<!--   xlab("Age (months)") +  -->
+<!--   ggthemes::theme_few() -->
+
+<!-- # ggsave(plot =animate_plot, filename = "~/Desktop/animate.pdf", height = 4, width = 6) -->
+<!-- ``` -->
+
+# General developmental changes in RT
 
 ```{r}
-mod_rt <- lmer(log_rt ~ log_age_centered +
-              (1 | administration_id) + 
-              (1 | dataset_name) + 
-              (log_age_centered | target_label), 
-            data = d_rt_dt)
+ms_rt <- d_rt |>
+  ungroup() |>
+  group_by(dataset_name, administration_id, age) |>
+  summarise(n_rt = n(),
+            rt = mean(rt, na.rm=TRUE),
+            log_rt = mean(log_rt, na.rm=TRUE)) |>
+  mutate(log_age = log(age))
+
 ```
 
-Accuracy model:
+Now plot. 
 
 ```{r}
-mod_acc <- lmer(elogit_baseline ~ log_age_centered * animate_target + 
-                  log_age_centered * animate_distractor +
-                  (1 | administration_id) + 
-                  (log_age_centered | dataset_name) + 
-                  (log_age_centered | target_label) + 
-                  (1 | distractor_label), 
-                data = df_clean_bc, 
-                control = lmerControl(optimizer="bobyqa"))
+labels <- data_frame(age = c(12,24,36,48), y = log(300)) |>
+  mutate(log_age = log(age), 
+         age_mo = paste(as.character(age), "months"))
 
+ref_750 <- log(750)
+ref_1000 <- log(1000)
 
+ggplot(ms_rt, aes(x = log_age, y = log_rt)) + 
+  geom_jitter(alpha = .1, width = .02, height = 0) + 
+  geom_smooth(method = "lm") +
+  geom_hline(yintercept = ref_750, lty = 2) +
+  geom_hline(yintercept = ref_1000, lty = 2) +
+  annotate("text", x = log(12), y = ref_750, label = "750 ms", vjust = -.25, hjust = 0) +
+  annotate("text", x = log(12), y = ref_1000, label = "1000 ms", vjust = -.25, hjust = 0) + 
+  geom_vline(data = labels, 
+             aes(xintercept = log_age), lty = 3) + 
+  geom_text(data = labels, 
+             aes(x = log_age, y = y, label = age_mo), lty = 3, hjust = 0) + 
+  xlab("log(age)") +
+  ylab("log(RT)") + 
+  theme_few() +
+  ggtitle(glue("Reaction time decreases with age (N={nrow(ms_acc)})"))
 ```
+
+
+<!-- ```{r} -->
+<!-- mod_rt <- lmer(log_rt ~ log_age_centered + -->
+<!--               (1 | administration_id) +  -->
+<!--               (1 | dataset_name) +  -->
+<!--               (log_age_centered | target_label),  -->
+<!--             data = d_rt_dt) -->
+<!-- ``` -->
 
 
 # Relation between RT and accuracy 
 
+OK, let's take a look at these subject and word-level measures. 
 
-## Relate measures directly
+
+```{r}
+
+acc_rt <- inner_join(ms_acc, ms_rt) |>
+  mutate(age_group_years = cut(age, breaks = c(12,24,36,48,60)))
+
+head(acc_rt)
+```
 
 
-## Relate predicted measures
+Take a look at correlations to select variables. 
+
+```{r}
+GGally::ggpairs(select(ungroup(acc_rt), -dataset_name, -age_group_years, -n_accuracy, -n_rt, -administration_id), 
+        progress = FALSE, lower = list(continuous = GGally::wrap("points", alpha = 0.03)))
+
+```
+It turns out that the correlations between elogit(accuracy), log(age), and log(rt) are all stronger. So we'll adopt these. 
+
+
+```{r}
+GGally::ggpairs(select(ungroup(acc_rt), elogit, log_rt, log_age), 
+        progress = FALSE, lower = list(continuous = GGally::wrap("points", alpha = 0.03)))
+
+```
+
+So these are somewhat related to one another. Let's take a deeper look. 
+
+```{r}
+ggplot(acc_rt, aes(x = log_rt, y = elogit, col = log_age)) +
+  geom_point(alpha = .3) +
+  geom_smooth(method = "lm") +
+  geom_hline(yintercept = .5, lty = 2) + 
+  xlab("Mean log RT") + 
+  ylab("Mean elogit(accuracy)")
+```
+
+Broken out by age group. 
+
+```{r}
+ggplot(acc_rt, aes(x = log_rt, y = elogit)) +
+  geom_point(alpha = .3) +
+  geom_smooth(method = "lm") +
+  geom_hline(yintercept = .5, lty = 2) +
+  facet_wrap(~age_group_years) + 
+  xlab("Mean log RT") + 
+  ylab("Mean elogit accuracy")
+
+  
+```
+
+By dataset. 
+
+```{r}
+ggplot(acc_rt, aes(x = log_rt, y = elogit, col = log_age)) +
+  geom_point(alpha = .3) +
+  geom_smooth(method = "lm") +
+  geom_hline(yintercept = .5, lty = 2) +
+  facet_wrap(~dataset_name) + 
+  xlab("Mean log RT") + 
+  ylab("Mean elogit accuracy")
+
+```
+
+## Dimensionality reduction
+
+Let's do principal components analysis over the scaled variables. 
+
+```{r}
+acc_rt_mat <- acc_rt |>
+  ungroup() |>
+  select(log_age, elogit, log_rt) |>
+  mutate(log_age = scale(log_age)[,1], 
+         log_rt = scale(log_rt)[,1],
+         elogit = scale(elogit)[,1] )|>
+  as.matrix()
+
+acc_rt_prc <- prcomp(acc_rt_mat, 2)
+
+acc_rt_prc
+summary(acc_rt_prc)
+ggbiplot::ggbiplot(acc_rt_prc, alpha = .1)
+
+
+```
+
+We see that there is a first component with ~60% of variance that is "faster, more accurate, older". Then we see a second component that relates to younger, faster, slightly less accurate. And the final piece is older and less accurate.
+
+These would be interesting components to connect to CDI. In some sense, the claim of some of the Fernald processing corpus is that there is a second principal component here (namely, processing speed) that is meaningful and relates to later learning outcomes. 
+
