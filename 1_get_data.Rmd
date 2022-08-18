@@ -44,6 +44,8 @@ We're focused on familiar words here.
 ```{r, eval=FALSE}
 con <- connect_to_peekbank(db_version="peekbank_dev")
 all_aoi_timepoints <- get_aoi_timepoints(connection = con, rle=FALSE)
+
+con <- connect_to_peekbank(db_version="peekbank_dev")
 all_stimuli <- collect(get_stimuli(connection = con))
 all_administrations <- collect(get_administrations(connection = con))
 all_subjects <- collect(get_subjects(connection = con))
@@ -57,22 +59,26 @@ aoi_data_joined <- all_aoi_timepoints |>
   right_join(all_trial_types) |>
   mutate(stimulus_id = target_id) |>
   right_join(all_stimuli) |>
-  select(dataset_name, subject_id, administration_id, trial_id, dataset_id, 
+  select(dataset_name, subject_id, administration_id, trial_id, trial_order, dataset_id, 
          stimulus_id, distractor_id, t_norm, age, aoi, english_stimulus_label, 
          stimulus_novelty) %>%
-  rename(target_label = english_stimulus_label) %>%
+  rename(target_label = english_stimulus_label, 
+         target_id = stimulus_id) %>%
   left_join(all_stimuli %>%
               select(stimulus_id, dataset_id, 
                      stimulus_novelty, english_stimulus_label) %>%
               rename(distractor_id = stimulus_id, 
                      distractor_novelty = stimulus_novelty,
                      distractor_label = english_stimulus_label))
+
+save(aoi_data_joined, file= here("cached_intermediates","1_aoi_data_joined.Rds"))
   
 # TO DO: looks like a very small number of rows get added in the join, probably a sign of an issue/ ambiguity somewhere.
 ```
 Check on number of datasets. 
 
 ```{r}
+load(here("cached_intermediates", "1_aoi_data_joined.Rds"))
 length(unique(aoi_data_joined$dataset_name))
 unique(aoi_data_joined$dataset_name)
 ```
@@ -90,8 +96,8 @@ d_trial <- aoi_data_joined |>
   filter(age > 12, age <= 60, 
          stimulus_novelty == "familiar",
          distractor_novelty == "familiar") |> 
-  select(dataset_name, subject_id, administration_id, trial_id, 
-         dataset_id, stimulus_id, t_norm, age, aoi, target_label, distractor_label) |>
+  select(dataset_name, subject_id, administration_id, trial_id, trial_order,
+         dataset_id, target_id, t_norm, age, aoi, target_label, distractor_label) |>
   mutate(correct = ifelse(aoi == "target", 1, 
                           ifelse(aoi == "distractor", 0, NA)))
 ```
@@ -148,9 +154,9 @@ d_trial$distractor_label[d_trial$distractor_label %in% c("sippycup")] <- "sippy"
 d_trial$distractor_label[d_trial$distractor_label %in% c("socks")] <- "sock"
 ```
 
-
+Save the key intermediate file. 
 
 ```{r}
-save(d_trial, file = here("data","d_trial.Rds"))
+save(d_trial, file = here("cached_intermediates","1_d_trial.Rds"))
 ```
 

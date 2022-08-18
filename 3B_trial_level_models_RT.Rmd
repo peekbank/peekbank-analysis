@@ -210,8 +210,8 @@ ggplot(d_rt_dt,
 ```{r}
 mod_rt <- mod
 d_rt <- d_rt_dt
-save(file = here("data","3B_mod_rt.Rds"), mod_rt)
-save(file = here("data","3B_d_rt.Rds"), d_rt)
+save(file = here("cached_intermediates","3B_mod_rt.Rds"), mod_rt)
+save(file = here("cached_intermediates","3B_d_rt.Rds"), d_rt)
 ```
 
 

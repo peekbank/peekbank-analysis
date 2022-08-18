@@ -31,7 +31,7 @@ Let's move forward with ALL THE DATA (tm). Window will be something like 500 -- 
 df <- d_trial |>
     filter(t_norm > 500, t_norm < 4000) |>
     group_by(dataset_name, dataset_id, administration_id, 
-             age, stimulus_id, target_label, distractor_label) |>
+             age, trial_id, target_label, distractor_label) |>
     summarise(accuracy = mean(correct[t_norm > 0], na.rm=TRUE),
               prop_data = mean(!is.na(correct[t_norm > 0])), 
               target = sum(correct[t_norm > 0], na.rm=TRUE),

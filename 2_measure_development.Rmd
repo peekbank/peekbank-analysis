@@ -814,7 +814,7 @@ ggplot(acc_rt_iccs,
 This is interesting! We are getting a bunch of signal about individual participants from RT, actually higher ICC than accuracies. Not so much for stimulus information, where it seems like we are doing better from accuracy. Also, as predicted the number of trials per child or per word appears to relate across datasets to the ICC (though there's lots of variance at the bottom end that presumably relates to the variation in ability across kids/variation in difficulty across words). If you choose very different words you get high reliability on that dimension (see "reliability paradoxes" idea).
 
 ```{r}
-save(d_rt_dt, file= "data/d_rt_dt.Rds")
+save(d_rt_dt, file= here("cached_intermediates","2_d_rt_dt.Rds"))
 ```
 
 # Summary

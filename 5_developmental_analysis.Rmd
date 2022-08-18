@@ -9,12 +9,11 @@ output: html_document
 library(here)
 library(peekbankr)
 library(lme4)
-# library(ggpmisc)
 library(ggrepel)
 library(ggthemes)
 library(glue)
 library(tidyverse)
-#also needs GGally and ggbiplot and ggpubr but one of these irresponsibly sources plyr
+#also needs GGally and ggbiplot but one of these irresponsibly sources plyr
 
 
 # Seed for random number generation
@@ -72,48 +71,6 @@ ggplot(ms_acc, aes(x = log_age, y = elogit)) +
   ggtitle(glue("Accuracy increases with age (N={nrow(ms_acc)})"))
 ```
 
-
-<!-- ```{r} -->
-<!-- mod_acc <- lmer(elogit_baseline ~ log_age_centered * animate_target +  -->
-<!--                   log_age_centered * animate_distractor + -->
-<!--                   (1 | administration_id) +  -->
-<!--                   (log_age_centered | dataset_name) +  -->
-<!--                   (log_age_centered | target_label) +  -->
-<!--                   (1 | distractor_label),  -->
-<!--                 data = df_clean_bc,  -->
-<!--                 control = lmerControl(optimizer="bobyqa")) -->
-
-<!-- preds <- expand_grid( -->
-<!--   animate_target = c(TRUE, FALSE),  -->
-<!--   animate_distractor = c(TRUE, FALSE),  -->
-<!--   log_age_centered = seq(min(d_acc$log_age_centered), -->
-<!--                 max(d_acc$log_age_centered), .1)) -->
-
-<!-- preds <- preds |> -->
-<!--   mutate(.pred = predict(lmm_fit,  -->
-<!--                          type = "response", -->
-<!--                          re.form = NA,  -->
-<!--                          newdata = preds),  -->
-<!--          age = exp(log_age_centered + mean(d_acc$log_age))) -->
-
-<!-- # animate_plot <-  -->
-<!--   ggplot(d_acc, -->
-<!--        aes(x = age, y = elogit)) +  -->
-<!--   geom_point(alpha = .1) +  -->
-<!--   geom_line(data = preds,  -->
-<!--             aes(y = .pred, col = animate_target, lty = animate_distractor),  -->
-<!--             size = 1.5) +  -->
-<!--   geom_hline(lty = 2, yintercept = 0) +  -->
-<!--   scale_x_continuous(breaks = c(12,24,36,48,60)) +  -->
-<!--   scale_color_solarized(name = "Animate target") +  -->
-<!--   scale_linetype(name = "Animate distractor") +  -->
-<!--   ylab("Trial-level accuracy (elogit)") +  -->
-<!--   xlab("Age (months)") +  -->
-<!--   ggthemes::theme_few() -->
-
-<!-- # ggsave(plot =animate_plot, filename = "~/Desktop/animate.pdf", height = 4, width = 6) -->
-<!-- ``` -->
-
 # General developmental changes in RT
 
 ```{r}
@@ -153,16 +110,6 @@ ggplot(ms_rt, aes(x = log_age, y = log_rt)) +
   theme_few() +
   ggtitle(glue("Reaction time decreases with age (N={nrow(ms_acc)})"))
 ```
-
-
-<!-- ```{r} -->
-<!-- mod_rt <- lmer(log_rt ~ log_age_centered + -->
-<!--               (1 | administration_id) +  -->
-<!--               (1 | dataset_name) +  -->
-<!--               (log_age_centered | target_label),  -->
-<!--             data = d_rt_dt) -->
-<!-- ``` -->
-
 
 # Relation between RT and accuracy 
 
@@ -257,4 +204,8 @@ ggbiplot::ggbiplot(acc_rt_prc, alpha = .1)
 We see that there is a first component with ~60% of variance that is "faster, more accurate, older". Then we see a second component that relates to younger, faster, slightly less accurate. And the final piece is older and less accurate.
 
 These would be interesting components to connect to CDI. In some sense, the claim of some of the Fernald processing corpus is that there is a second principal component here (namely, processing speed) that is meaningful and relates to later learning outcomes. 
+
+# Conclusions
+
+Probably right now we need to try and connect this to CDIs...
 
