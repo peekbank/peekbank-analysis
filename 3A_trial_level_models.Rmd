@@ -5,19 +5,21 @@ date: "6/26/2022"
 output: html_document
 ---
 
-```{r setup, echo = FALSE, messsage = FALSE}
+```{r setup, include = FALSE}
 library(here)
 library(tidyverse)
 library(lme4)
 library(ggrepel)
 library(ggthemes)
 library(cowplot)
+library(glue)
 
 # Seed for random number generation
 set.seed(42)
 knitr::opts_chunk$set(cache.extra = knitr::rand_seed, cache = TRUE, 
                       message=FALSE, warning=FALSE, error=FALSE)
 
+source(here("helper", "lmer_helper.R"))
 load(file = here("cached_intermediates","1_d_trial.Rds"))
 ```
 
@@ -82,6 +84,23 @@ ggplot(df, aes(x = elogit)) +
   geom_histogram()
 ```
 
+Are the 0s and 1s driven by specific items or kids?
+
+```{r}
+df_filtered <- df |>
+  group_by(target_label) |>
+  mutate(target_accuracy = mean(accuracy)) |>
+  group_by(administration_id) |>
+  mutate(admin_accuracy = mean(accuracy)) |>
+  filter(target_accuracy > 0.05, admin_accuracy > 0.05,
+         target_accuracy < 0.95, admin_accuracy < 0.95)
+
+ggplot(df_filtered, aes(x = accuracy)) + 
+  geom_histogram()
+```
+
+Doesn't seem like it.
+
 And consider filtering 0/1 observations just to see if we can get a decent distribution.
 
 ```{r}
@@ -129,23 +148,14 @@ comparison_plot
 
 # Model comparison 
 
-What follows is an iterative model building/comparison exercise. The goal is really to build up something that is interpretable as a model of variation in the LWL task. You might think this could be done programmatically as opposed to with cut-and-paste as I did it here. In my defense, I spent a lot of time with `tidymodels` and `workflows` and found that there were some bugs in the `predict` workflow that were insurmountable for `lme4`. In particular, we couldn't predict with different random effect structures, meaning that one critical function that we were trying to fulfill here was not doable under `tidymodels`. Fail. Hence the copy/paste. 
-
+What follows is an iterative model building/comparison exercise. The goal is really to build up something that is interpretable as a model of variation in the LWL task. The models and predictions are computed using functions in `helper/lmer_helper.R`.
 
 ```{r}
-lmm_fit <- lmer(elogit ~ age + 
-                  (1 | administration_id), 
-                data = d_acc)
-
-preds <- expand_grid(
-  age = seq(min(d_acc$age), max(d_acc$age),1),
-  target_label = hf_words$target_label)
-
-preds <- preds |>
-  mutate(.pred = predict(lmm_fit, 
-                         type = "response",
-                         re.form = ~  0, 
-                         newdata = preds))
+lmm_fit <- fit_trial_model(predicted = "elogit",
+                           fixed_effects = "age",
+                           random_effects = c(administration_id = 1),
+                           data = d_acc)
+preds <- predict_trial_model(lmm_fit)
 
 ggplot(d_acc,
        aes(x = age, y = elogit)) + 
@@ -161,21 +171,11 @@ ggplot(d_acc,
 Now let's put in some random effects. 
 
 ```{r}
-lmm_fit <- lmer(elogit ~ age + 
-                  (1 | administration_id) + 
-                  (1 | dataset_name) + 
-                  (1 | target_label), 
-                data = d_acc)
-
-preds <- expand_grid(
-  age = seq(min(d_acc$age),max(d_acc$age),1),
-  target_label = hf_words$target_label)
-
-preds <- preds |>
-  mutate(.pred = predict(lmm_fit, 
-                         type = "response",
-                         re.form = ~  (1|target_label), 
-                         newdata = preds))
+lmm_fit <- fit_trial_model(predicted = "elogit",
+                           fixed_effects = "age",
+                           random_effects = c(administration_id = 1, dataset_name = 1, target_label = 1),
+                           data = d_acc)
+preds <- predict_trial_model(lmm_fit)
 
 ggplot(d_acc,
        aes(x = age, y = elogit)) + 
@@ -192,21 +192,11 @@ ggplot(d_acc,
 Random slopes by age.
 
 ```{r}
-lmm_fit <- lmer(elogit ~ age + 
-                  (1 | administration_id) + 
-                  (1 | dataset_name) + 
-                  (age | target_label), 
-                data = d_acc)
-
-preds <- expand_grid(
-  age = seq(min(d_acc$age),max(d_acc$age),1),
-  target_label = hf_words$target_label)
-
-preds <- preds |>
-  mutate(.pred = predict(lmm_fit, 
-                         type = "response",
-                         re.form = ~  (age|target_label), 
-                         newdata = preds))
+lmm_fit <- fit_trial_model(predicted = "elogit",
+                           fixed_effects = "age",
+                           random_effects = c(administration_id = 1, dataset_name = 1, target_label = "age"),
+                           data = d_acc)
+preds <- predict_trial_model(lmm_fit)
 
 main_plot <- ggplot(d_acc,
        aes(x = age, y = elogit)) + 
@@ -227,24 +217,13 @@ Seems like we should try to accommodate the curvature in the age slopes. One pos
 d_acc$log_age <- log(d_acc$age)
 d_acc$log_age_centered <- d_acc$log_age - mean(d_acc$log_age)
 
-lmm_fit <- lmer(elogit ~ log_age_centered + 
-                  (1 | administration_id) + 
-                  (1 | dataset_name) + 
-                  (log_age_centered | target_label), 
-                data = d_acc, 
-                control = lmerControl(optimizer="bobyqa"))
-
-preds <- expand_grid(
-  log_age_centered = seq(min(d_acc$log_age_centered),
-                max(d_acc$log_age_centered), .1),
-  target_label = hf_words$target_label)
-
-preds <- preds |>
-  mutate(.pred = predict(lmm_fit, 
-                         type = "response",
-                         re.form = ~  (log_age_centered | target_label), 
-                         newdata = preds), 
-         age = exp(log_age_centered + mean(d_acc$log_age)))
+lmm_fit <- fit_trial_model(predicted = "elogit",
+                           fixed_effects = "log_age_centered",
+                           random_effects = c(administration_id = 1, dataset_name = 1, target_label = "log_age_centered"),
+                           data = d_acc,
+                           optimizer = "bobyqa")
+preds <- predict_trial_model(lmm_fit) |>
+  mutate(age = exp(log_age_centered + mean(d_acc$log_age)))
 
 main_plot <- ggplot(d_acc,
        aes(x = age, y = elogit)) + 
@@ -316,25 +295,16 @@ First, we should probably model within-dataset age effects. Second, we should pr
 Our model of distractors right now is purely linear. Some distractors are harder -- such that if having `car` as the distractor makes you less likely to look at the target, then it's going to have a negative coefficient. Similarly, maybe `ball` is a boring distractor and so you're more likely to look. We can't fit in age-slopes though. 
 
 ```{r}
-lmm_fit <- lmer(elogit ~ log_age_centered + 
-                  (1 | administration_id) + 
-                  (log_age_centered | dataset_name) + 
-                  (log_age_centered | target_label) + 
-                  (1 | distractor_label), 
-                data = d_acc, 
-                control = lmerControl(optimizer="bobyqa"))
-
-preds <- expand_grid(
-  log_age_centered = seq(min(d_acc$log_age_centered),
-                max(d_acc$log_age_centered), .1),
-  target_label = hf_words$target_label)
-
-preds <- preds |>
-  mutate(.pred = predict(lmm_fit, 
-                         type = "response",
-                         re.form = ~  (log_age_centered | target_label), 
-                         newdata = preds), 
-         age = exp(log_age_centered + mean(d_acc$log_age)))
+lmm_fit <- fit_trial_model(predicted = "elogit",
+                           fixed_effects = "log_age_centered",
+                           random_effects = c(administration_id = 1,
+                                              dataset_name = "log_age_centered",
+                                              target_label = "log_age_centered",
+                                              distractor_label = 1),
+                           data = d_acc,
+                           optimizer = "bobyqa")
+preds <- predict_trial_model(lmm_fit) |>
+  mutate(age = exp(log_age_centered + mean(d_acc$log_age)))
 
 main_plot <- ggplot(d_acc,
        aes(x = age, y = elogit)) + 
@@ -401,31 +371,21 @@ animates <- c("animal","baby","dog","bear","bird","boy",
 d_acc$animate_target <- d_acc$target_label %in% animates
 d_acc$animate_distractor <- d_acc$distractor_label %in% animates
 ```
+
 Now let's add animacy of targets and distractor to the model as well as interactions with age. 
 
 ```{r}
-mod_acc <- lmer(elogit ~ log_age_centered * animate_target + 
-                  log_age_centered * animate_distractor +
-                  (1 | administration_id) + 
-                  (log_age_centered | dataset_name) + 
-                  (log_age_centered | target_label) + 
-                  (1 | distractor_label), 
-                data = d_acc, 
-                control = lmerControl(optimizer="bobyqa"))
-
-preds <- expand_grid(
-  animate_target = c(TRUE, FALSE), 
-  animate_distractor = c(TRUE, FALSE), 
-  log_age_centered = seq(min(d_acc$log_age_centered),
-                max(d_acc$log_age_centered), .1),
-  target_label = hf_words$target_label)
-
-preds <- preds |>
-  mutate(.pred = predict(mod_acc, 
-                         type = "response",
-                         re.form = ~  (log_age_centered | target_label), 
-                         newdata = preds), 
-         age = exp(log_age_centered + mean(d_acc$log_age)))
+lmm_fit <- fit_trial_model(predicted = "elogit",
+                           fixed_effects = c("log_age_centered * animate_target",
+                                             "log_age_centered * animate_distractor"),
+                           random_effects = c(administration_id = 1,
+                                              dataset_name = "log_age_centered",
+                                              target_label = "log_age_centered",
+                                              distractor_label = 1),
+                           data = d_acc,
+                           optimizer = "bobyqa")
+preds <- predict_trial_model(lmm_fit) |>
+  mutate(age = exp(log_age_centered + mean(d_acc$log_age)))
 
 main_plot <- ggplot(d_acc,
        aes(x = age, y = elogit)) + 
@@ -475,6 +435,7 @@ target_ranef |>
 Let's save the resulting model and carry it forward. 
 
 ```{r}
+mod_acc <- lmm_fit
 save(file = here("cached_intermediates","3A_d_acc.Rds"), d_acc)
 save(file = here("cached_intermediates","3A_mod_acc.Rds"), mod_acc)
 ```
@@ -539,28 +500,17 @@ d_acc_bc$log_age_centered <- d_acc_bc$log_age - mean(d_acc_bc$log_age)
 d_acc_bc$animate_target <- d_acc_bc$target_label %in% animates
 d_acc_bc$animate_distractor <- d_acc_bc$distractor_label %in% animates
 
-lmm_fit_bc <- lmer(elogit_bc ~ log_age_centered * animate_target + 
-                  log_age_centered * animate_distractor +
-                  (1 | administration_id) + 
-                  (log_age_centered | dataset_name) + 
-                  (log_age_centered | target_label) + 
-                  (1 | distractor_label), 
-                data = d_acc_bc, 
-                control = lmerControl(optimizer="bobyqa"))
-
-preds <- expand_grid(
-  animate_target = c(TRUE, FALSE), 
-  animate_distractor = c(TRUE, FALSE), 
-  log_age_centered = seq(min(d_acc_bc$log_age_centered),
-                max(d_acc_bc$log_age_centered), .1),
-  target_label = hf_words$target_label)
-
-preds <- preds |>
-  mutate(.pred = predict(lmm_fit_bc, 
-                         type = "response",
-                         re.form = ~  (log_age_centered | target_label), 
-                         newdata = preds), 
-         age = exp(log_age_centered + mean(d_acc_bc$log_age)))
+lmm_fit_bc <- fit_trial_model(predicted = "elogit_baseline",
+                           fixed_effects = c("log_age_centered * animate_target",
+                                             "log_age_centered * animate_distractor"),
+                           random_effects = c(administration_id = 1,
+                                              dataset_name = "log_age_centered",
+                                              target_label = "log_age_centered",
+                                              distractor_label = 1),
+                           data = d_acc_bc,
+                           optimizer = "bobyqa")
+preds <- predict_trial_model(lmm_fit_bc) |>
+  mutate(age = exp(log_age_centered + mean(d_acc_bc$log_age)))
 
 ggplot(d_acc_bc,
        aes(x = age, y = elogit)) + 
@@ -570,10 +520,7 @@ ggplot(d_acc_bc,
   geom_hline(lty = 2, yintercept = 0) + 
   xlab("Age (months)") + 
   ggthemes::theme_few()
-
 ```
-
-
 
 ```{r}
 target_ranef <-  tibble(ranef(lmm_fit)$target_label) |>
@@ -588,7 +535,6 @@ target_ranef |>
   knitr::kable(digits = 2)
 ```
 
-
 Now look at baseline. 
 
 ```{r}
@@ -598,28 +544,18 @@ d_acc_bc$log_age_centered <- d_acc_bc$log_age - mean(d_acc_bc$log_age)
 d_acc_bc$animate_target <- d_acc_bc$target_label %in% animates
 d_acc_bc$animate_distractor <- d_acc_bc$distractor_label %in% animates
 
-mod_acc_bc <- lmer(elogit_baseline ~ log_age_centered * animate_target + 
-                  log_age_centered * animate_distractor +
-                  (1 | administration_id) + 
-                  (log_age_centered | dataset_name) + 
-                  (log_age_centered | target_label) + 
-                  (1 | distractor_label), 
-                data = d_acc_bc, 
-                control = lmerControl(optimizer="bobyqa"))
+lmm_fit_bc <- fit_trial_model(predicted = "elogit_baseline",
+                           fixed_effects = c("log_age_centered * animate_target",
+                                             "log_age_centered * animate_distractor"),
+                           random_effects = c(administration_id = 1,
+                                              dataset_name = "log_age_centered",
+                                              target_label = "log_age_centered",
+                                              distractor_label = 1),
+                           data = d_acc_bc,
+                           optimizer = "bobyqa")
 
-preds <- expand_grid(
-  animate_target = c(TRUE, FALSE), 
-  animate_distractor = c(TRUE, FALSE), 
-  log_age_centered = seq(min(d_acc_bc$log_age_centered),
-                max(d_acc_bc$log_age_centered), .1),
-  target_label = hf_words$target_label)
-
-preds <- preds |>
-  mutate(.pred = predict(mod_acc_bc, 
-                         type = "response",
-                         re.form = ~  (log_age_centered | target_label), 
-                         newdata = preds), 
-         age = exp(log_age_centered + mean(d_acc_bc$log_age)))
+preds <- predict_trial_model(lmm_fit_bc) |>
+  mutate(age = exp(log_age_centered + mean(d_acc_bc$log_age)))
 
 ggplot(d_acc_bc,
        aes(x = age, y = elogit_baseline)) + 
@@ -633,7 +569,7 @@ ggplot(d_acc_bc,
 ```
 
 ```{r}
+mod_acc_bc <- lmm_fit_bc
 save(file = here("cached_intermediates","3A_d_acc_bc.Rds"), d_acc_bc)
 save(file = here("cached_intermediates","3A_mod_acc_bc.Rds"), mod_acc_bc)
 ```
-
