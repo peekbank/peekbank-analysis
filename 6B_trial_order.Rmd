@@ -13,25 +13,161 @@ library(lme4)
 library(ggpmisc)
 library(ggrepel)
 library(ggthemes)
+library(lmerTest)
 
 # Seed for random number generation
 set.seed(42)
 knitr::opts_chunk$set(cache.extra = knitr::rand_seed, cache = TRUE, 
                       message=FALSE, warning=FALSE, error=FALSE)
 
-load(file = here("data","3A_df_clean.Rds"))
-load(file = here("data","3B_d_rt_dt.Rds"))
+load(file = here("cached_intermediates","1_d_trial.Rds"))
+
+load(file = here("cached_intermediates","3A_d_acc.Rds"))
 ```
+
+```{r}
+d_trial_summary <- d_trial %>%
+  group_by(dataset_id, administration_id, trial_id, trial_order, 
+           age, target_id, target_label, distractor_label) %>%
+  summarise(pre_accuracy = mean(correct[t_norm <= 0], na.rm = TRUE),
+            post_accuracy = mean(correct[t_norm > 0], na.rm = TRUE))
+
+d_trial_summary <- d_trial_summary %>%
+  # we put in stimulus pair alphabetically because it needs to be in a consistent order
+  # so that we can group by the pairing and not by pairing x target
+  mutate(stim_pair = paste(sort(c(target_label, distractor_label)), collapse = "_")) %>% 
+  arrange(dataset_id, administration_id, trial_order) %>%
+  group_by(dataset_id, administration_id, stim_pair) %>%
+  mutate(instance = seq(1,n())) %>% # instance is how many times you've seen this pair of stimuli
+  ungroup() %>%
+  group_by(dataset_id, administration_id, stim_pair, target_label) %>%
+  mutate(target_instance = seq(1,n())) %>% # target instance is how many times you've seen this pair of stimuli with this target as a target
+  ungroup()
+
+d_trial_summary %>%
+  filter(target_instance < 3, instance == 2) %>%
+  ggplot(aes(x = as.factor(target_instance), y = post_accuracy)) +
+  geom_boxplot()
+
+rep_trials <- d_trial_summary %>%
+  group_by(dataset_id, administration_id, stim_pair) %>%
+  mutate(max_instances = max(instance)) %>% 
+  ungroup() %>%
+  filter(max_instances > 1)
+
+rep_datasets <- rep_trials %>%
+  distinct(dataset_id)
+
+rep_model <- rep_trials %>%
+  lmer(data = ., pre_accuracy ~ age + instance * target_instance +
+              (1 | dataset_id))
+
+rep_timecourse_just_two <- d_trial %>%
+  left_join(rep_trials) %>% 
+  filter(max_instances > 1) %>%
+  filter(target_instance < 3, instance == 2) 
+  
+rep_timecourse_just_two %>%
+  group_by(target_instance, t_norm) %>%
+  summarize(accuracy = mean(correct, na.rm=TRUE)) %>%
+  filter(t_norm > -3000, t_norm < 4000) %>%
+  ggplot(aes(x = t_norm, y = accuracy, color = as.factor(target_instance))) + 
+  geom_smooth(method="gam")+
+  geom_vline(xintercept=0)+
+  geom_hline(yintercept=0.5,linetype="dashed") +
+  scale_color_manual(label = c("new target", "old target"), values = c('#21908CFF', '#D01C8B'),
+                     name = "target novelty")
+
+rep_timecourse_just_two %>%
+  mutate(age_bin = cut(age, breaks = 4)) %>%
+  group_by(age_bin, target_instance, t_norm) %>%
+  summarize(accuracy = mean(correct, na.rm=TRUE)) %>%
+  filter(t_norm > -3000, t_norm < 4000) %>%
+  ggplot(aes(x = t_norm, y = accuracy, color = as.factor(target_instance)), group = age_bin) + 
+  geom_smooth(method="gam")+
+  facet_wrap(~age_bin) +
+  geom_vline(xintercept=0)+
+  geom_hline(yintercept=0.5,linetype="dashed") +
+  scale_color_manual(label = c("new target", "old target"), values = c('#21908CFF', '#D01C8B'),
+                     name = "target novelty")
+
+rep_timecourse <- d_trial %>%
+  filter(trial_id %in% rep_trials$trial_id) %>%
+  left_join(rep_trials) %>%
+  filter(instance < 5, max_instances > 1)
+  
+rep_timecourse %>%
+  group_by(instance, target_instance, t_norm) %>%
+  summarize(accuracy = mean(correct, na.rm=TRUE)) %>% 
+  ungroup() %>%
+  filter(t_norm > -3000, t_norm < 4000) %>%
+  ggplot(aes(x = t_norm, y = accuracy, color = as.factor(target_instance))) + 
+  geom_smooth(method="gam") +
+  facet_wrap(~instance) +
+  geom_vline(xintercept=0)+
+  geom_hline(yintercept=0.5,linetype="dashed") 
+
+```
+
+```{r}
+summarize_by_subj <- d_trial %>%
+  mutate(trial_name = paste(target_label, distractor_label, sep = "_"),
+         order_bin = trial_order) %>%
+  group_by(trial_order, t_norm) %>%
+  summarize(N=n(),accuracy=mean(correct,na.rm=TRUE))
+
+summarize_by_subj %>%
+  ggplot(aes(x = trial_order, y = accuracy)) +
+  geom_point(aes(size=N))
+
+#### summarize across subjects ####
+summarize_across_subj <- summarize_by_subj %>%
+  group_by(trial_name, t_norm) %>%
+  summarize(N=sum(!is.na(mean_accuracy)),
+            accuracy=mean(mean_accuracy,na.rm=TRUE),
+            sd_accuracy=sd(mean_accuracy,na.rm=TRUE))
+
+ggplot(filter(summarize_across_subj,N>length(unique(full_data$administration_id))/3),aes(x = t_norm,y = accuracy, color = trial_name, group = trial_name))+
+  geom_line(data=filter(summarize_by_subj,N>10),aes(y=mean_accuracy,color=as.factor(administration_id),
+                                                    group=as.factor(administration_id)),alpha=0.2)+
+  geom_line()+
+  geom_smooth(method="gam")+
+  geom_vline(xintercept=0)+
+  geom_vline(xintercept=300,linetype="dotted")+
+  geom_hline(yintercept=0.5,linetype="dashed") +
+  facet_wrap(~trial_novelty)
+
+
+```
+
+
+
+
+
+
+
 
 
 RT model: 
 
 ```{r}
-mod_rt <- lmer(log_rt ~ log_age_centered +
+mod_rt_order <- lmer(log_rt ~ log_age_centered +
               (1 | administration_id) + 
               (1 | dataset_name) + 
               (log_age_centered | target_label), 
-            data = d_rt_dt)
+            data = d_rt)
+
+```
+
+```{r, eval=FALSE}
+con <- connect_to_peekbank(dbname="peekbank_dev")
+all_trials <- collect(get_trials(connection = con))
+
+d_rt_trial_order <- d_rt %>%
+  left_join(all_trials %>% select(trial_id, trial_order, dataset_id), by = c("dataset_id", "trial_id"))
+
+df_acc_trial_order <- df_acc %>%
+  left_join(all_trials %>% select(trial_id, trial_order, dataset_id), by = c("dataset_id", "trial_id"))
 ```
 
 Accuracy model:
