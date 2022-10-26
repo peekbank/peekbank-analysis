@@ -1,0 +1,257 @@
+---
+title: "Trial analysis 2B: curve shapes"
+author: "Mike"
+date: "10/5/2022"
+output: 
+  html_document:
+  toc: true
+toc_depth: 2
+toc_float: true
+code_folding: hide
+---
+  
+```{r setup, echo = FALSE}
+library(gamlss)
+suppressPackageStartupMessages(library(here))
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(lme4))
+suppressPackageStartupMessages(library(ggpmisc))
+suppressPackageStartupMessages(library(ggrepel))
+suppressPackageStartupMessages(library(ggthemes))
+# remotes::install_github("jmgirard/agreement")
+library(agreement)
+select <- dplyr::select
+
+
+# Seed for random number generation
+set.seed(42)
+knitr::opts_chunk$set(cache.extra = knitr::rand_seed, cache = TRUE, 
+                      message=FALSE, warning=FALSE, error=FALSE)
+options(dplyr.summarise.inform = FALSE)
+
+load(file = here("cached_intermediates/","1_d_trial.Rds"))
+```
+
+# Prepare data
+
+
+```{r}
+BIN_INTERVAL <- 250
+T_RANGE <- c(-500,3000)
+
+ms <- d_trial %>%
+  mutate(age_binned = cut(age, seq(0,60,12))) %>%
+  filter(aoi %in% c("target","distractor"), 
+         # dataset_name %in% c("perry_cowpig","mahr_coartic"), 
+         t_norm >= T_RANGE[1],
+         t_norm <= T_RANGE[2]) %>%
+  mutate(t_window = 
+           as.numeric(as.character(
+             cut(t_norm, 
+                          breaks = seq(T_RANGE[1],T_RANGE[2],BIN_INTERVAL), 
+                          labels = seq(T_RANGE[1] + BIN_INTERVAL / 2, 
+                                       T_RANGE[2] - BIN_INTERVAL / 2, 
+                                       BIN_INTERVAL)))),
+         age_centered = age - 36) %>%
+  group_by(dataset_id, administration_id, trial_id, t_window, 
+           age, age_centered, age_binned, target_label) %>%
+  summarise(prop_target = round(mean(aoi=="target")), 
+            num_target = sum(aoi == "target"), 
+            N = length(aoi), 
+            elogit = log( (num_target + .5) / (N - num_target + .5)), 
+            wts = 1/(num_target + .5) + 1/(N - num_target + .5)) %>%
+  filter(!is.na(t_window))
+```
+
+Distribution of data. 
+
+```{r}
+hist(ms$elogit)
+```
+
+
+```{r}
+ggplot(ms, aes(x = age, y = elogit)) + 
+  geom_jitter(alpha = .01)
+```
+
+
+Let's visualize the data going into our model, just for kicks. We can see why this is tricky. 
+
+```{r}
+ggplot(ms, 
+       aes(x = t_window, y = elogit, col = age_binned)) + 
+  stat_summary(fun.data = mean_se, geom = "pointrange") +
+  stat_summary(geom = "line") +
+  xlab("Time (ms)") +
+  ylab("Target Looking (elogit)") 
+```
+
+# GAM models
+
+```{r}
+ms$dataset_id_f <- as.factor(ms$dataset_id)
+ms$administration_id_f <- as.factor(ms$administration_id)
+ms$target_label_f <- as.factor(ms$target_label)
+
+mod <- gamlss(elogit ~ pb(t_window) * poly(age,2) + 
+                random(dataset_id_f) +
+                random(administration_id_f) + 
+                random(target_label_f),
+              sigma.formula = ~ pb(t_window),
+              data = filter(ms, age <= 48))
+       
+       # (vocab ~ pbm(age, lambda = 10000),
+       #                               sigma.formula = ~ pbm(age, lambda = 10000),
+       #                               family = BE, 
+       #                               control = gamlss.control(c.crit = .1),
+       #                               data = data)
+```
+
+Model with fit. 
+
+```{r}
+summary(mod)
+```
+
+Plot. 
+
+```{r}
+ms_filt <- filter(ms, age <= 48)
+
+ms_filt$fitted <- predict(mod, type = "response")
+```
+
+
+```{r}
+ggplot(ms_filt, 
+       aes(x = t_window, y = elogit, col = age_binned)) + 
+  stat_summary(fun.data = mean_se, geom = "pointrange") +
+  stat_summary(aes(y = fitted), geom = "line") +
+  xlab("Time (ms)") +
+  ylab("Target Looking (elogit)") 
+```
+
+
+# Orthogonal polynomials
+
+Now we make our orthogonal polynomials with code straight from Mirman (2014). Make more than we need so we can try out different degrees. 
+
+```{r}
+POLY_DEG <- 5
+
+ops <- poly(unique(ms$t_window), POLY_DEG)
+ops_tibble <- tibble(ot1 = ops[,1], 
+                     ot2 = ops[,2],
+                     ot3 = ops[,3],
+                     ot4 = ops[,4],
+                     ot5 = ops[,5],
+                     t_window = unique(ms$t_window))
+
+ms <- left_join(ms, ops_tibble)
+```
+Plot these to understand them better. 
+
+```{r}
+ops_tibble %>%
+  pivot_longer(starts_with("ot")) %>%
+  ggplot(aes(x = t_window, y = value)) + 
+  geom_line() +
+  facet_wrap(~name)
+```
+
+
+# Models
+
+We explore a glmer over the discretized proportions. This fits slowly and has some convergence issues even when we prune to the most minimal random effect structure. I wasn't able to get any random slopes in there in particular, which seems like a deal-breaker. So let's skip this. 
+
+```{r, eval = FALSE}
+
+mod_prop <- glmer(prop_target ~ (ot1 + ot2 + ot3) * age_centered +
+                     (1 | dataset_id) +
+                     (1 | target_label),
+                  family = "binomial", 
+                  data = ms)
+
+```
+
+The elogit is quite similar in distribution... not sure we can legitimately use a linear link, but we adopt it for now.
+
+```{r}
+elogit <- lmer(elogit ~ (ot1 + ot2 + ot3) * age_centered +
+                  (1 | administration_id) +
+                  (1 | dataset_id) +
+                  (1 | target_label),
+                weights = 1/wts, 
+                data = ms)
+```
+
+Let's look at the model. 
+
+```{r}
+summary(elogit)
+```
+
+Now, let's look at model fits. 
+
+```{r}
+elogit_data = ms
+elogit_data$fit <- fitted(elogit)
+
+ggplot(elogit_data, 
+       aes(x = t_window, y = elogit, col = age_binned)) + 
+  stat_summary(fun.data = mean_se, geom = "pointrange") +
+  stat_summary(aes(y = fit), fun = mean, geom = "line") +
+  geom_hline(yintercept = 0, col = "black", lty = 2) +
+  # ylim(0, 1) +
+  xlab("Time (ms)") +
+  ylab("Target Looking (elogit)") 
+```
+So x is the elogit value. 
+
+$$x = \log(\frac{y + .5}{N - y + .5})$$
+
+So solve for y
+
+$$\frac{e^x(2N + 1) - 1}{2(e^x + 1)} = y  $$
+
+The `VWpre` package has a function, but it assumes constant N. 
+
+```{r}
+elogit_to_prop <- function(x, N) {
+  y = ((exp(x) * (2 * N + 1) - 1) / (2 * (exp(x) + 1))) / N
+  
+  return(y)
+}
+```
+
+Plot in proportion space. 
+
+```{r}
+# try VWPRE
+elogit_data$fitted_prop <- elogit_to_prop(elogit_data$fit, elogit_data$N)
+ggplot(elogit_data, 
+       aes(x = t_window, y = prop_target, col = age_binned)) + 
+  stat_summary(fun.data = mean_se, geom = "pointrange") +
+  stat_summary(aes(y = fitted_prop), fun = mean, geom = "line") +
+  geom_hline(yintercept = .5, col = "black", lty = 2) +
+  # ylim(0, 1) +
+  xlab("Time (ms)") +
+  ylab("Proportion Target Looking") 
+```
+
+
+Plot model predictions from fixed effects. **TODO: quadratic age effects**
+
+```{r}
+newdata <- left_join(expand_grid(t_window = seq(50, 1450, 100), 
+                            age_centered = c(18,30, 42, 54) - 36), 
+                            ops_tibble) 
+
+newdata$pred <- predict(elogit, newdata = newdata, re.form = NA)
+newdata$fitted_prop <- elogit_to_prop(newdata$pred, 4)
+
+ggplot(newdata, 
+       aes(x = t_window, y = pred, col = factor(age_centered+36))) + 
+  geom_line()
+```

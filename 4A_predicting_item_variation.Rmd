@@ -6,65 +6,72 @@ output: html_document
 ---
 
 ```{r setup, echo = FALSE}
-suppressPackageStartupMessages(library(here))
-suppressPackageStartupMessages(library(tidyverse))
-suppressPackageStartupMessages(library(peekbankr))
-suppressPackageStartupMessages(library(lme4))
-suppressPackageStartupMessages(library(ggpmisc))
-suppressPackageStartupMessages(library(ggrepel))
-suppressPackageStartupMessages(library(ggthemes))
+# remotes::install_github("langcog/wordbankr")
+library(wordbankr)
+library(here)
+library(tidyverse)
+library(peekbankr)
+library(lme4)
+library(ggpmisc)
+library(ggrepel)
+library(ggthemes)
 
 # Seed for random number generation
 set.seed(42)
 knitr::opts_chunk$set(cache.extra = knitr::rand_seed, cache = TRUE, 
                       message=FALSE, warning=FALSE, error=FALSE)
 
-load(file = here("data","df_clean.Rds"))
-load(file = here("data","lmm_fit.Rds"))
-load(file = here("data","df_clean_bc.Rds"))
-load(file = here("data","lmm_fit_bc.Rds"))
-load(file = here("data","3B_d_rt_dt.Rds"))
-load(file = here("data","3B_lmm_fit_rt.Rds"))
+load(file = here("cached_intermediates","3A_d_acc.Rds"))
+load(file = here("cached_intermediates","3A_mod_acc.Rds"))
+load(file = here("cached_intermediates","3A_d_acc_bc.Rds"))
+load(file = here("cached_intermediates","3A_mod_acc_bc.Rds"))
+load(file = here("cached_intermediates","3B_d_rt.Rds"))
+load(file = here("cached_intermediates","3B_mod_rt.Rds"))
 
 ```
 
 # Compare to Wordbank AoAs
 
-Load AoAs - this is from `aoa_prediction.R`, which I assume I wrote at some point but can't remember. 
+Load AoAs. 
 
 ```{r get_aoas, eval=FALSE}
 items <- wordbankr::get_item_data(language = "English (American)") 
 
 ws_data <- wordbankr::get_instrument_data(language = "English (American)", 
                                           form = "WS", 
-                                          administrations = TRUE, 
-                                          items = items$item_id[items$form == "WS"]) %>%
-  right_join(items)
-wg_data <- wordbankr::get_instrument_data(language = "English (American)", 
-                                          form = "WG", 
-                                          administrations = TRUE, 
-                                          items = items$item_id[items$form == "WG"]) %>%
-  right_join(items)
+                                          administration_info = TRUE, 
+                                          item_info = TRUE)
 
-wordbank_data <- bind_rows(ws_data, wg_data) %>%
-  mutate(produces = value == "produces", 
-         form = "both", 
-         num_item_id = definition, # stupid stuff to make fit_aoa work on joint data
-         item_id = definition) %>%
-  filter(type == "word")
+ws_item_ids <- ws_data |>
+  select(item_id, item_definition, item_kind) |>
+  distinct()
+
+wg_data <- wordbankr::get_instrument_data(language = "English (American)",
+                                          form = "WG",
+                                          administration_info = TRUE,
+                                          item_info = TRUE)
+
+wg_data_ws_ids <- wg_data |>
+  select(-item_id) |>
+  left_join(ws_item_ids)
+
+wordbank_data <- bind_rows(ws_data, wg_data_ws_ids) |>
+  mutate(form = "both") |>
+  filter(item_kind == "word")
 
 aoas <- wordbankr::fit_aoa(wordbank_data, 
                            measure = "produces", 
                            method = "glmrob",
                            age_min = 8, 
                            age_max = 36)
-saveRDS(aoas, here("explorations","data","aoas.rds"))
+
+saveRDS(aoas, here("cached_intermediates","4A_aoas.rds"))
 ```
 
 Load these from cache since it's time-consuming. 
 
 ```{r aoas}
-aoas <- readRDS(here("data","aoas.rds"))
+aoas <- readRDS(here("cached_intermediates","4A_aoas.rds"))
 ```
 
 Now let's look at the relationship between AoAs and accuracies. 
@@ -80,14 +87,14 @@ What's the right metric to compare? Here are some ideas:
 Let's try each. First let's do average accuracy. 
 
 ```{r}
-mdf <- df_clean |>
+mdf <- d_acc |>
   group_by(target_label) |>
   summarise(avg_accuracy = mean(accuracy),
             n_trials = n()) |>
   inner_join(aoas |>
               ungroup() |>
-              select(definition, aoa) |>
-              rename(target_label = definition))
+              select(item_definition, aoa) |>
+              rename(target_label = item_definition))
 
 ggplot(mdf, aes(x = aoa, y = avg_accuracy)) + 
   geom_point(alpha = .5, aes(size = n_trials)) + 
@@ -110,10 +117,10 @@ The correlation only gets stronger when we subset to items about which we have a
 Let's try methods 2 and 3.
 
 ```{r}
-ranefs <- tibble(ranef(lmm_fit)$target_label) |>
+ranefs <- tibble(ranef(mod_acc)$target_label) |>
   rename(intercept = `(Intercept)`,
          slope = `log_age_centered`)
-ranefs$target_label <- rownames(ranef(lmm_fit)$target_label) 
+ranefs$target_label <- rownames(ranef(mod_acc)$target_label) 
 
 mdf <- left_join(mdf, ranefs)
 ```
@@ -122,7 +129,7 @@ mdf <- left_join(mdf, ranefs)
 Extract "AoAs" from predicted curves. We're going to get the point at which a word crosses the elogit = 1 line as "the age of acquisition" - approx the point when the proportion accuracy hits 75%. We'll also look at the elogit value at age 36 months as different proxy. (These points are marked by the two red lines below). 
 
 ```{r}
-words <- df_clean |>
+words <- d_acc |>
   group_by(target_label) |> 
   count() 
   
@@ -132,16 +139,17 @@ hf_words = words |>
 preds <- expand_grid(
   animate_target = FALSE, 
   animate_distractor = FALSE, 
-  log_age_centered = seq(min(df_clean$log_age_centered),
-                max(df_clean$log_age_centered), .1),
-  target_label = unique(df_clean$target_label))
+  log_age_centered = seq(min(d_acc$log_age_centered),
+                max(d_acc$log_age_centered), .1),
+  target_label = unique(d_acc$target_label)) |>
+  filter(target_label %in% hf_words$target_label)
 
 preds <- preds |>
-  mutate(.pred = predict(lmm_fit, 
+  mutate(.pred = predict(mod_acc, 
                          type = "response",
                          re.form = ~  (log_age_centered | target_label), 
                          newdata = preds), 
-         age = exp(log_age_centered + mean(df_clean$log_age)))
+         age = exp(log_age_centered + mean(d_acc$log_age)))
 
 ggplot(filter(preds, target_label %in% hf_words$target_label),
        aes(x = age, y = .pred, col = target_label)) + 
@@ -218,7 +226,7 @@ In sum, we're not seeing ANY successes in linking peekbank to wordbank.
 ## Baseline corrected accuracy and AoA
 
 ```{r}
-words <- df_clean_bc |>
+words <- d_acc_bc |>
   group_by(target_label) |> 
   count() 
   
@@ -228,16 +236,16 @@ hf_words = words |>
 preds <- expand_grid(
   animate_target = FALSE, 
   animate_distractor = FALSE, 
-  log_age_centered = seq(min(df_clean_bc$log_age_centered),
-                max(df_clean_bc$log_age_centered), .1),
-  target_label = unique(df_clean_bc$target_label))
+  log_age_centered = seq(min(d_acc_bc$log_age_centered),
+                max(d_acc_bc$log_age_centered), .1),
+  target_label = unique(d_acc_bc$target_label))
 
 preds <- preds |>
   mutate(.pred = predict(lmm_fit_bc, 
                          type = "response",
                          re.form = ~  (log_age_centered | target_label), 
                          newdata = preds), 
-         age = exp(log_age_centered + mean(df_clean$log_age)))
+         age = exp(log_age_centered + mean(d_acc$log_age)))
 
 ggplot(filter(preds, target_label %in% hf_words$target_label),
        aes(x = age, y = .pred, col = target_label)) + 
@@ -303,7 +311,7 @@ preds <- preds |>
                          type = "response",
                          re.form = ~  (log_age_centered | target_label), 
                          newdata = preds), 
-         age = exp(log_age_centered + mean(df_clean$log_age)))
+         age = exp(log_age_centered + mean(d_acc$log_age)))
 
 ggplot(filter(preds, target_label %in% hf_words$target_label),
        aes(x = age, y = .pred, col = target_label)) + 

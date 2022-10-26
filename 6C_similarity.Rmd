@@ -1,0 +1,561 @@
+---
+title: '6C: Similarity and frequency effects'
+author: "Peekbank team"
+date: "2022-08-17"
+output: html_document
+---
+
+The goal of this markdown is to consider the role of visual similarity in predicting item-by-item performance. We'll do this first for accuracy and then for reaction time. 
+
+```{r setup, echo = FALSE, message = FALSE}
+library(here)
+library(tidyverse)
+library(peekbankr)
+library(childesr)
+library(lme4)
+library(ggthemes)
+library(ggrepel)
+library(glue)
+
+# Seed for random number generation
+set.seed(42)
+knitr::opts_chunk$set(cache.extra = knitr::rand_seed, cache = TRUE, 
+                      message=FALSE, warning=FALSE, error=FALSE)
+
+load(file = here("cached_intermediates","3A_d_acc.Rds"))
+load(file = here("cached_intermediates","3B_d_rt.Rds"))
+
+d_acc <- filter(d_acc, dataset_id != "pomper_dimy")
+d_rt <- filter(d_rt, dataset_id != "pomper_dimy")
+```
+
+# Load similarities
+
+words to get.
+
+```{r}
+words <- union(unique(d_acc$target_label),
+               unique(d_acc$distractor_label))
+
+```
+
+Get THINGS database similarity scores from Hebart et al. 2020: https://osf.io/z2784/
+
+```{r}
+sims_raw <- R.matlab::readMat("misc/spose_similarity.mat")
+sims_names <- read_tsv("misc/items1854names.tsv")
+```
+
+Intersection. 
+
+```{r}
+length(words)
+length(intersect(words, sims_names$Word))
+
+intersect_words <- intersect(words, sims_names$Word)
+diff_words <- setdiff(words, sims_names$Word)
+diff_words
+```
+
+Peekbank - THINGS
+teddy - teddy bear
+keys - key
+peas - pea
+bunny - rabbit
+grapes - grape
+waterbottle - bottle (?)
+blueberries - blueberry
+remote - remote control
+
+```{r}
+sims_names$Word[sims_names$Word == "teddy bear"] <- "teddy"
+sims_names$Word[sims_names$Word == "key"] <- "keys"
+sims_names$Word[sims_names$Word == "pea"] <- "peas"
+sims_names$Word[sims_names$Word == "rabbit"] <- "bunny"
+sims_names$Word[sims_names$Word == "grape"] <- "grapes"
+sims_names$Word[sims_names$Word == "bottle"] <- "waterbottle"
+sims_names$Word[sims_names$Word == "blueberry"] <- "blueberries"
+sims_names$Word[sims_names$Word == "remote control"] <- "remote"
+```
+
+
+```{r}
+sims <- sims_raw$spose.sim
+rownames(sims) <- sims_names$Word
+colnames(sims) <- sims_names$Word
+
+sims_df <- as_tibble(sims) |>
+  mutate(target_label = sims_names$Word) |>
+  pivot_longer(-target_label, names_to = "distractor_label", values_to = "similarity") 
+```
+
+Now merge into d_acc. 
+
+```{r}
+sims_df_filtered <- filter(sims_df, target_label %in% words) |>
+  mutate(similarity_scaled = scale(similarity)[,1])
+
+sim_acc <- left_join(d_acc, 
+                     sims_df_filtered)
+```
+
+How much data did we lose? 
+
+```{r}
+mean(is.na(sim_acc$similarity))
+```
+
+Not bad. 
+
+## Visualization
+
+What's the range of similarities?
+
+```{r}
+sim_range <- sim_acc |>
+  group_by(target_label, distractor_label) |>
+  summarise(similarity = similarity[1], 
+            n = n()) |>
+  filter(!is.na(similarity)) |>
+  filter(n > 100) |>
+  arrange(desc(n)) |>
+  ungroup() |>
+  mutate(pairing = fct_reorder(as.factor(paste(target_label, "-", distractor_label)), 
+                               similarity))
+
+ggplot(sim_range, aes(x = pairing, y = similarity)) + 
+  geom_point() + coord_flip() 
+```
+
+# Similarity and accuracy
+
+## Visualization and correlations
+
+Let's go back and add accuracies to the mix. There are a lot of pairings where we know nothing. But it actually turns out that when we weight the regression we see some signal.  
+
+```{r}
+sim_range <- sim_acc |>
+  group_by(target_label, distractor_label) |>
+  summarise(similarity = similarity[1], 
+            accuracy = mean(elogit), 
+            n = n()) |>
+  filter(!is.na(similarity)) |>
+  mutate(pairing = paste(target_label, "-", distractor_label))
+
+ggplot(sim_range, aes(x = similarity, y = accuracy)) + 
+  geom_point(aes(size = n)) + 
+  geom_smooth(method = "lm", mapping = aes(weight = n)) + 
+  xlab("THINGS similarity") + 
+  ylab("elogit(accuracy)") +
+  theme_few()
+```
+What about when we have lots of data for individual pairings? Then we start to get something real. 
+
+```{r}
+ggplot(filter(sim_range, n>100), aes(x = similarity, y = accuracy)) + 
+  geom_point(aes(size = n)) + 
+  geom_smooth(method = "lm", mapping = aes(weight = n)) + 
+  xlab("THINGS similarity") + 
+  ylab("elogit(accuracy)") +
+  theme_few() +
+  geom_label_repel(aes(label = pairing))
+```
+Just for kicks, let's see the correlation numbers. 
+
+```{r}
+with(sim_range, cor.test(similarity, accuracy))
+with(filter(sim_range, n>100), 
+     cor.test(similarity, accuracy))
+with(filter(sim_range, n>200), 
+     cor.test(similarity, accuracy))
+
+```
+
+So correlation goes up when we filter down to smaller amounts of (more precisely-estimated) pairs. 
+
+## Regression models
+
+Now the moment of truth. Does this help with regression models? 
+
+```{r}
+source(here("helper", "lmer_helper.R"))
+sim_acc <- filter(sim_acc, 
+                  !is.na(similarity))
+```
+
+And the similarity one. 
+
+```{r}
+mod_sim <- fit_trial_model(predicted = "elogit",
+                           fixed_effects = c("log_age_centered * animate_target",
+                                             "log_age_centered * animate_distractor",
+                                             "log_age_centered * similarity"),
+                           random_effects = c(administration_id = 1,
+                                              dataset_name = "log_age_centered",
+                                              target_label = "log_age_centered",
+                                              distractor_label = 1),
+                           data = sim_acc,
+                           optimizer = "bobyqa")
+
+knitr::kable(summary(mod_sim)[[10]], digits = 3)
+```
+
+Doesn't do *anything* in the model with animacy. Let's try in a model without. 
+
+
+```{r}
+mod_sim <- fit_trial_model(predicted = "elogit",
+                           fixed_effects = c("log_age_centered * similarity"),
+                           random_effects = c(administration_id = 1,
+                                              dataset_name = "log_age_centered",
+                                              target_label = "log_age_centered",
+                                              distractor_label = 1),
+                           data = sim_acc,
+                           optimizer = "bobyqa")
+
+knitr::kable(summary(mod_sim)[[10]], digits = 3)
+```
+
+
+Nothing at all. Bleh. 
+
+Hypothesis: something about random effects is killing this off. We'll go with a simple(r) random effect structure. 
+
+```{r}
+mod_sim <- fit_trial_model(predicted = "elogit",
+                           fixed_effects = c("log_age_centered * similarity"),
+                           random_effects = c(administration_id = 1,
+                                              dataset_name = "log_age_centered"),
+                           data = sim_acc,
+                           optimizer = "bobyqa")
+
+knitr::kable(summary(mod_sim)[[10]], digits = 3)
+```
+
+OK! So we get no interaction but a big main effect - higher similarity leads to lower accuracy. That's precisely what we saw in the correlational analysis. 
+
+Take out age interaction with similarity and add back in random effects.
+
+```{r}
+mod_sim <- fit_trial_model(predicted = "elogit",
+                           fixed_effects = c("log_age_centered + similarity"),
+                           random_effects = c(administration_id = 1,
+                                              dataset_name = "log_age_centered",
+                                              target_label = 1),
+                           data = sim_acc,
+                           optimizer = "bobyqa")
+
+knitr::kable(summary(mod_sim)[[10]], digits = 3)
+```
+
+OK, so it's clear that item-pair similarity is getting eaten by the target random effects, which makes sense to me. Because targets are fairly confounded with their distractors (across studies), we can't really get much traction on this. 
+
+# Similarity and reaction time
+
+Let's see about the relationship to reaction time. Merge into `d_rt`.
+
+```{r}
+sim_rt <- left_join(d_rt, sims_df_filtered) |>
+  filter(!is.na(similarity))
+```
+
+Start with visualization. 
+
+```{r}
+sim_range_rt <- sim_rt |>
+  group_by(target_label, distractor_label) |>
+  summarise(similarity = similarity[1], 
+            log_rt = mean(log_rt), 
+            n = n()) |>
+  filter(!is.na(similarity)) |>
+  mutate(pairing = paste(target_label, "-", distractor_label))
+
+ggplot(sim_range_rt, aes(x = similarity, y = log_rt)) + 
+  geom_point(aes(size = n)) + 
+  geom_smooth(method = "lm", mapping = aes(weight = n)) + 
+  xlab("THINGS similarity") + 
+  ylab("log(reaction time)") +
+  theme_few()
+```
+
+Again restrict amount of data. Here we get nothing!
+
+```{r}
+ggplot(filter(sim_range_rt, n>100), aes(x = similarity, y = log_rt)) + 
+  geom_point(aes(size = n)) + 
+  geom_smooth(method = "lm", mapping = aes(weight = n)) + 
+  xlab("THINGS similarity") + 
+  ylab("log(reaction time)") +
+  theme_few() +
+  geom_label_repel(aes(label = pairing))
+```
+Just for kicks, let's see the correlation numbers. 
+
+```{r}
+with(sim_range_rt, cor.test(similarity, log_rt))
+with(filter(sim_range_rt, n>100), 
+     cor.test(similarity, log_rt))
+with(filter(sim_range_rt, n>200), 
+     cor.test(similarity, log_rt))
+```
+
+Interestingly, there is a significant but very small correlation for the whole dataset, but it goes in the WRONG direction! 
+
+```{r}
+mod_sim_rt <- fit_trial_model(predicted = "log_rt",
+                           fixed_effects = c("log_age_centered * animate_target",
+                                             "log_age_centered * animate_distractor",
+                                             "log_age_centered * similarity"),
+                           random_effects = c(administration_id = 1,
+                                              dataset_name = 1,
+                                              target_label = "log_age_centered",
+                                              distractor_label = 1),
+                           data = sim_rt)
+
+knitr::kable(summary(mod_sim_rt)[[10]], digits = 3)
+```
+
+And without animacy.
+
+```{r}
+mod_sim_rt <- fit_trial_model(predicted = "log_rt",
+                           fixed_effects = c("log_age_centered * similarity"),
+                           random_effects = c(administration_id = 1,
+                                              dataset_name = 1,
+                                              target_label = "log_age_centered",
+                                              distractor_label = 1),
+                           data = sim_rt)
+
+knitr::kable(summary(mod_sim_rt)[[10]], digits = 3)
+```
+
+Now without target_label random effects. 
+
+```{r}
+mod_sim_rt <- fit_trial_model(predicted = "log_rt",
+                           fixed_effects = c("log_age_centered + similarity"),
+                           random_effects = c(administration_id = 1,
+                                              dataset_name = 1),
+                           data = sim_rt)
+
+knitr::kable(summary(mod_sim_rt)[[10]], digits = 3)
+```
+
+In this one we get a significant NEGATIVE effect - which is again the wrong direction. Faster performance with more similar pairs? 
+
+# Effect size estimation
+
+Just for kicks, let's re-estimate these accuracy and RT models with standardized similarity coefficients so we can compare.
+
+
+```{r}
+sim_rt$log_rt_scaled <- scale(sim_rt$log_rt)[,1]
+sim_acc$elogit_scaled <- scale(sim_acc$elogit)[,1]
+
+
+mod_sim_rt <- fit_trial_model(predicted = "log_rt_scaled",
+                           fixed_effects = c("log_age_centered + similarity_scaled"),
+                           random_effects = c(administration_id = 1,
+                                              dataset_name = 1),
+                           data = sim_rt)
+
+mod_sim <- fit_trial_model(predicted = "elogit_scaled",
+                           fixed_effects = c("log_age_centered + similarity_scaled"),
+                           random_effects = c(administration_id = 1,
+                                              dataset_name = "log_age_centered"),
+                           data = sim_acc,
+                           optimizer = "bobyqa")
+
+knitr::kable(summary(mod_sim_rt)[[10]], digits = 3)
+knitr::kable(summary(mod_sim)[[10]], digits = 3)
+```
+
+Wow, I was wrong about this. 
+
+# Interim Summary
+
+For well-measured pairs of items, item-wise similarity seems like it makes a difference to accuracy and potentially also for reaction time. I am a bit worried about confounding as the signals were less clear for RT than for accuracy in the descriptive analysis - and also the effect goes in the WRONG direction. Confusing. 
+
+This analysis supports the emerging picture of our mesaures (especially accuracy?) as very much influenced by visual salience. 
+
+Here's a funny idea. What if we treat performance on LWL as the outcome to be predicted, rather than the predictor? Under this kind of setup, we wouldn't want to use target label random effects in our models. Instead we'd include fixed effects like similarity or frquency or other things to try and do prediction. 
+
+# Adding Wordbank AoAs as a predictor.
+
+```{r}
+aoas <- readRDS(here("cached_intermediates","4A_aoas.rds"))
+```
+
+
+```{r}
+intersect(aoas$item_definition, words)
+words[!(words %in% aoas$item_definition)]
+```
+
+```{r}
+minimal_aoas <- select(aoas, aoa, item_definition) |>
+  filter(item_definition %in% words) |>
+  rename(target_label = item_definition,
+         target_aoa = aoa) |>
+  mutate(target_aoa_scaled = scale(target_aoa)[,1]) 
+
+sim_acc_aoa <- inner_join(ungroup(sim_acc), minimal_aoas, by = "target_label") |>
+  inner_join(minimal_aoas |>
+               rename(distractor_label = target_label, 
+                      distractor_aoa = target_aoa, 
+                      distractor_aoa_scaled = target_aoa_scaled), 
+             by = "distractor_label")
+
+```
+
+Scale all the factors. Treatment coding for interpretability of coefficients as mean across animacy.
+
+```{r}
+sim_acc_aoa$target_aoa_scaled <- scale(sim_acc_aoa$target_aoa)[,1]
+sim_acc_aoa$distractor_aoa_scaled <- scale(sim_acc_aoa$distractor_aoa)[,1]
+contrasts(sim_acc_aoa$animate_target) <- contr.treatment(2)
+contrasts(sim_acc_aoa$animate_distractor) <- contr.treatment(2)
+```
+
+Try the model. 
+
+```{r}
+mod_sim_aoa <- fit_trial_model(predicted = "elogit_scaled",
+                           fixed_effects = c("log_age_centered + similarity_scaled + target_aoa_scaled + distractor_aoa_scaled + animate_target + animate_distractor"),
+                           random_effects = c(administration_id = 1,
+                                              dataset_name = "log_age_centered"),
+                           data = sim_acc_aoa)
+
+summary(mod_sim_aoa)
+```
+
+# Add frequencies. 
+
+```{r}
+freqs <- childesr::get_types(type = words, 
+                    language = "eng", 
+                    collection = "Eng-NA", 
+                    role = c("Mother", "Father"))
+
+freq_summary <- tibble(target_label = words) |>
+  left_join(freqs |>
+              rename(target_label = gloss) |>
+              group_by(target_label) |>
+              summarise(freq = sum(count))) |>
+  mutate(freq_lambda = freq + 1, 
+         log_freq = log(freq_lambda), 
+         log_freq_scaled = scale(log_freq)[,1])
+```
+
+```{r}
+d_pred_acc <- sim_acc_aoa |>
+  left_join(freq_summary |>
+              select(target_label, log_freq, log_freq_scaled) |>
+              rename(target_log_freq = log_freq, 
+                     target_log_freq_scaled = log_freq_scaled), 
+            by = "target_label") |>
+  left_join(freq_summary |>
+               rename(distractor_label = target_label, 
+                      distractor_log_freq = log_freq, 
+                      distractor_log_freq_scaled = log_freq_scaled), 
+             by = "distractor_label")
+```
+
+Model.
+
+```{r}
+mod_full_acc <- fit_trial_model(predicted = "elogit_scaled",
+                           fixed_effects = c("log_age_centered + 
+                                             similarity_scaled * log_age_centered + 
+                                             target_aoa_scaled * log_age_centered + 
+                                             distractor_aoa_scaled * log_age_centered+ 
+                                             animate_target * log_age_centered + 
+                                             animate_distractor * log_age_centered + 
+                                             target_log_freq_scaled * log_age_centered +
+                                             distractor_log_freq_scaled * log_age_centered "),
+                           random_effects = c(administration_id = 1,
+                                              dataset_name = "log_age_centered"),
+                           data = d_pred_acc)
+
+summary(mod_full_acc)
+```
+
+```{r fig.height = 6}
+mod_coefs <- broom.mixed::tidy(mod_full_acc) |>
+  filter(effect == "fixed") |>
+  mutate(type = factor(ifelse(str_detect(term, ":"), "interaction", "main effect"), 
+                       levels = c("main effect", "interaction")), 
+         significant = ifelse(abs(statistic) > 1.96, TRUE, FALSE))
+
+ggplot(mod_coefs, aes(x = term, y = estimate)) + 
+  geom_linerange(aes(ymin = estimate - std.error, ymax = estimate + std.error)) +
+  geom_point(aes(col = significant)) + 
+  facet_wrap(~type, scales = "free_x") + 
+  theme_few() +
+  geom_hline(yintercept = 0, lty = 2) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  ylab("Estimate (standardized)") +
+  xlab("Term")
+
+```
+
+## RT predictive models
+
+```{r}
+d_pred_rt <- left_join(d_rt |> ungroup(), 
+                       select(d_pred, target_label, distractor_label, 
+                              similarity_scaled, target_aoa_scaled, 
+                              distractor_aoa_scaled, target_log_freq_scaled, 
+                              distractor_log_freq_scaled) |> 
+                         distinct()) |>
+  mutate(log_rt_scaled = scale(log_rt)[,1])
+
+```
+
+Removed the slopes for dataset because the variance was super super low. 
+
+```{r}
+mod_full_rt <- fit_trial_model(predicted = "log_rt_scaled",
+                           fixed_effects = c("log_age_centered + 
+                                             similarity_scaled * log_age_centered + 
+                                             target_aoa_scaled * log_age_centered + 
+                                             distractor_aoa_scaled * log_age_centered+ 
+                                             animate_target * log_age_centered+ 
+                                             animate_distractor * log_age_centered+ 
+                                             target_log_freq_scaled * log_age_centered +
+                                             distractor_log_freq_scaled * log_age_centered "),
+                           random_effects = c(administration_id = 1,
+                                              dataset_name = 1),
+                           data = d_pred_rt)
+
+summary(mod_full_rt)
+```
+
+```{r fig.height = 6}
+mod_coefs <- broom.mixed::tidy(mod_full_rt) |>
+  filter(effect == "fixed") |>
+  mutate(type = factor(ifelse(str_detect(term, ":"), "interaction", "main effect"), 
+                       levels = c("main effect", "interaction")), 
+         significant = ifelse(abs(statistic) > 1.96, TRUE, FALSE))
+
+ggplot(mod_coefs, aes(x = term, y = estimate)) + 
+  geom_linerange(aes(ymin = estimate - std.error, ymax = estimate + std.error)) +
+  geom_point(aes(col = significant)) + 
+  facet_wrap(~type, scales = "free_x") + 
+  theme_few() +
+  geom_hline(yintercept = 0, lty = 2) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  ylab("Estimate (standardized)") +
+  xlab("Term")
+
+```
+
+# Summary
+
+We backed our way into an interesting analysis. 
+
+We discovered that there was some relation between pairwise similarity of items and accuracy. That made a lot of sense, but the relation went in the WRONG direction for reaction time so it led us to be skeptical. 
+
+We then tried to make predictive models of accuracy and RT. We added Wordbank AoAs and CHILDES frequencies to the similarities, and added interactions of each with age. Most interactions were not significant, but we found clear target and distractor AoA and frequency effects. 
+
+One big caveat here is that all of these fixed effects are wiped out by random effects of 
