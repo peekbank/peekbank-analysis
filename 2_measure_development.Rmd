@@ -17,6 +17,8 @@ suppressPackageStartupMessages(library(lme4))
 suppressPackageStartupMessages(library(ggpmisc))
 suppressPackageStartupMessages(library(ggrepel))
 suppressPackageStartupMessages(library(ggthemes))
+suppressPackageStartupMessages(library(viridis))
+suppressPackageStartupMessages(library(cowplot))
 # remotes::install_github("jmgirard/agreement")
 library(agreement)
 
@@ -25,6 +27,8 @@ set.seed(42)
 knitr::opts_chunk$set(cache.extra = knitr::rand_seed, cache = TRUE, 
                       message=FALSE, warning=FALSE, error=FALSE)
 options(dplyr.summarise.inform = FALSE)
+
+figure_path <- here("figures")
 
 load(file = here("cached_intermediates","1_d_trial.Rds"))
 ```
@@ -265,6 +269,7 @@ ggplot(excl_params,
   geom_jitter(width = .01, alpha = .5) + 
   geom_smooth(method = "lm") + 
   facet_wrap(~object)
+ggsave(here(figure_path,"zoners_reliability.png"),width=10,height=6,dpi=600)
 ```
 
 Looks to me like excluding zoners isn't a clear win (and a loss for stimulus ICC). Further, excluding on amount of data doesn't seem to gain us reliability. 
@@ -311,9 +316,56 @@ ggplot(acc_params, aes(x = t_start, y = icc, col = as.factor(t_end))) +
   geom_jitter() + 
   facet_wrap(~object) + 
   geom_smooth(aes(group = as.factor(t_end)), se = FALSE)
+ggsave(here(figure_path,"reliability_window.png"),width=10,height=6,dpi=600)
 ```
 
 Looks like for stimulus and administration you get consistent but modest gains if you take the longest window. BUT for stimuli, the early part of the trial adds reliability (probably because of bias due to stimulus-level preferences?). In contrast, for administrations, the early part of the trial is less informative. 500ms seems like a pretty good compromise. 
+
+```{r}
+ggplot(acc_params, aes(x = t_start, y = icc, col = as.factor(t_end))) + 
+  geom_point() + 
+  facet_wrap(~object) + 
+  geom_smooth(aes(group = as.factor(t_end)), se = FALSE)
+
+acc_params_summary <- acc_params %>%
+  group_by(t_start,t_end,object) %>%
+  summarize(
+    N=n(),
+    mean_icc=mean(icc,na.rm=TRUE)
+  ) %>%
+  mutate(
+    window_size = t_end-t_start
+  )
+
+ggplot(filter(acc_params_summary,object=="administration"),aes(x=t_start,y=t_end,fill=mean_icc))+
+  geom_tile(color="white")+
+  scale_fill_viridis(name="Mean ICC\n(by-subject)",option="inferno")+
+  theme_cowplot()+
+  scale_x_continuous(breaks=c(-1000,-500,0,500,1000,1500))+
+  xlab("Window Start Time (in ms)")+
+  ylab("Window End Time (in ms)")
+ggsave(here(figure_path,"reliability_window_grid_ICC_subject.png"),width=10,height=6,dpi=600)
+
+ggplot(acc_params_summary,aes(x=t_start,y=t_end,fill=mean_icc))+
+  geom_tile(color="white")+
+  scale_fill_viridis(name="Mean ICC",option="inferno")+
+  theme_cowplot()+
+  scale_x_continuous(breaks=c(-1000,-500,0,500,1000,1500))+
+  xlab("Window Start Time (in ms)")+
+  ylab("Window End Time (in ms)")+
+  facet_wrap(~object)
+ggsave(here(figure_path,"reliability_window_grid_overall.png"),width=10,height=6,dpi=600)
+
+
+ggplot(filter(acc_params_summary,object=="administration"),aes(color=mean_icc))+
+  geom_segment(aes(x=t_start,xend=t_end,y=mean_icc,yend=mean_icc),size=2)+
+  scale_color_viridis(name="Mean ICC",direction=-1)+
+  theme_cowplot()+
+  ylab("Mean ICC")+
+  xlab("Analysis Window (in ms)")
+ggsave(here(figure_path,"reliability_window_segment_innovation.png"),width=10,height=6,dpi=600)
+```
+
 
 ## Window size by age
 
