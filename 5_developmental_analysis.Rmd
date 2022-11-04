@@ -56,11 +56,12 @@ ref_75 <- log( (75 + .5) / (25 + .5) )
 
 ggplot(ms_acc, aes(x = log_age, y = elogit)) + 
   geom_jitter(alpha = .1, width = .02, height = 0) + 
-  geom_smooth(method = "lm") +
+  geom_smooth(method = "lm") + 
+  geom_smooth(method = "loess", col = "green") + 
   geom_hline(yintercept = 0, lty = 2) +
   geom_hline(yintercept = ref_75, lty = 2) +
   annotate("text", x = log(12), y = 0, label = "50% correct", vjust = -.25, hjust = 0) +
-  annotate("text", x = log(12), y = ref_75, label = "75% correct", vjust = -.25, hjust = 0) + 
+  annotate("text", x = log(12), y = ref_75, label = "75% correct", vjust = -.25, hjust = 0) +
   geom_vline(data = labels, 
              aes(xintercept = log_age), lty = 3) + 
   geom_text(data = labels, 
@@ -70,6 +71,19 @@ ggplot(ms_acc, aes(x = log_age, y = elogit)) +
   theme_few() +
   ggtitle(glue("Accuracy increases with age (N={nrow(ms_acc)})"))
 ```
+Look at how unremarkable this looks in the original accuracy/age space. 
+
+```{r}
+ggplot(ms_acc, aes(x = age, y = accuracy)) + 
+  geom_jitter(alpha = .1, width = .02, height = 0) + 
+  geom_smooth(method = "loess", col = "green") + 
+  xlab("log(age)") +
+  ylab("elogit (accuracy)") + 
+  theme_few() +
+  ggtitle(glue("Accuracy increases with age (N={nrow(ms_acc)})"))
+
+```
+
 
 # General developmental changes in RT
 
