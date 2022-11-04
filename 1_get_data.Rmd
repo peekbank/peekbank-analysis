@@ -84,7 +84,7 @@ unique(aoi_data_joined$dataset_name)
 ```
 
 
-Take only English familiar word data. 
+Take only English familiar word data and also remove datasets that aren't ready for primetime.
 
 ```{r}
 d_trial <- aoi_data_joined |>
@@ -92,7 +92,8 @@ d_trial <- aoi_data_joined |>
                                "byers-heinlein_2017", 
                                "hurtado_2008", 
                                "kartushina_2019",
-                               "weisleder_stl"))) |>
+                               "weisleder_stl",
+                               "pomper_dimy"))) |>
   filter(age > 12, age <= 60, 
          stimulus_novelty == "familiar",
          distractor_novelty == "familiar") |> 
