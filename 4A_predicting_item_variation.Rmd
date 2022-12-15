@@ -15,6 +15,7 @@ library(lme4)
 library(ggpmisc)
 library(ggrepel)
 library(ggthemes)
+library(cowplot)
 
 # Seed for random number generation
 set.seed(42)
@@ -90,6 +91,7 @@ Let's try each. First let's do average accuracy.
 mdf <- d_acc |>
   group_by(target_label) |>
   summarise(avg_accuracy = mean(accuracy),
+            avg_elogit = mean(elogit),
             n_trials = n()) |>
   inner_join(aoas |>
               ungroup() |>
@@ -103,6 +105,23 @@ ggplot(mdf, aes(x = aoa, y = avg_accuracy)) +
   ggrepel::geom_label_repel(aes(label = target_label))
 ```
 There's a correlation, but it goes in the WRONG direction! 
+
+Presentation Plot
+
+```{r}
+ggplot(mdf, aes(x = aoa, y = avg_accuracy)) + 
+  geom_point(alpha = .5, aes(size = n_trials)) + 
+  geom_smooth(method = "lm") + 
+  ggpmisc::stat_correlation(small.r=TRUE,size=8) + 
+  ggrepel::geom_label_repel(aes(label = target_label),max.overlaps=7)+
+  theme_cowplot(font_size=20)+
+  xlab("Age of Acquisition (Wordbank estimates)")+
+  ylab("Average Accuracy")+
+  scale_size_continuous(name="# trials")+
+  theme(legend.position=c(0.1,0.2))
+ggsave(here(figure_path,"aoa_correlation.png"),width=10,height=6,dpi=600)
+```
+
 
 ```{r}
 ggplot(filter(mdf, n_trials > 200), 

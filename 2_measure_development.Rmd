@@ -358,12 +358,75 @@ ggsave(here(figure_path,"reliability_window_grid_overall.png"),width=10,height=6
 
 
 ggplot(filter(acc_params_summary,object=="administration"),aes(color=mean_icc))+
+  geom_vline(xintercept=0,linetype="dashed",size=1.2)+
+  annotate("text", x = -600, y = 0.5, label = "Target Onset", size=7) +
   geom_segment(aes(x=t_start,xend=t_end,y=mean_icc,yend=mean_icc),size=2)+
+  geom_segment(aes(x=t_start,xend=t_start,y=mean_icc-0.005,yend=mean_icc+0.005),size=2)+
+  geom_segment(aes(x=t_end,xend=t_end,y=mean_icc-0.005,yend=mean_icc+0.005),size=2)+
   scale_color_viridis(name="Mean ICC",direction=-1)+
-  theme_cowplot()+
+  scale_y_continuous(breaks=seq(0.2,0.5,0.1),limits=c(0.2,0.5))+
+  theme_cowplot(font_size=20)+
+  theme(legend.position="none")+
   ylab("Mean ICC")+
   xlab("Analysis Window (in ms)")
 ggsave(here(figure_path,"reliability_window_segment_innovation.png"),width=10,height=6,dpi=600)
+
+acc_params_summary <- acc_params_summary %>%
+  mutate(
+    highlight_start_1=if_else(t_start==-1000,1,0.5),
+    highlight_start_2=if_else(t_start==-500,1,0.5),
+    highlight_start_3=if_else(t_start==0,1,0.5),
+    highlight_start_4=if_else(t_start==500,1,0.5),
+    highlight_start_5=if_else(t_start==1000,1,0.5),
+    )
+
+ggplot(filter(acc_params_summary,object=="administration"),aes(color=mean_icc,alpha=highlight_start_1))+
+  geom_vline(xintercept=0,linetype="dashed",size=1.2)+
+  annotate("text", x = -600, y = 0.5, label = "Target Onset", size=7) +
+  geom_segment(aes(x=t_start,xend=t_end,y=mean_icc,yend=mean_icc),size=2)+
+  geom_segment(aes(x=t_start,xend=t_start,y=mean_icc-0.005,yend=mean_icc+0.005),size=2)+
+  geom_segment(aes(x=t_end,xend=t_end,y=mean_icc-0.005,yend=mean_icc+0.005),size=2)+
+  scale_color_viridis(name="Mean ICC",direction=-1)+
+  scale_y_continuous(breaks=seq(0.2,0.5,0.1),limits=c(0.2,0.5))+
+  scale_alpha_continuous(range=c(0.2,1))+
+  theme_cowplot(font_size=20)+
+  theme(legend.position="none")+
+  ylab("Mean ICC")+
+  xlab("Analysis Window (in ms)")
+ggsave(here(figure_path,"reliability_window_segment_innovation_1.png"),width=10,height=6,dpi=600)
+
+ggplot(filter(acc_params_summary,object=="administration"),aes(color=mean_icc,alpha=highlight_start_3))+
+  geom_vline(xintercept=0,linetype="dashed",size=1.2)+
+  annotate("text", x = -600, y = 0.5, label = "Target Onset", size=7) +
+  geom_segment(aes(x=t_start,xend=t_end,y=mean_icc,yend=mean_icc),size=2)+
+  geom_segment(aes(x=t_start,xend=t_start,y=mean_icc-0.005,yend=mean_icc+0.005),size=2)+
+  geom_segment(aes(x=t_end,xend=t_end,y=mean_icc-0.005,yend=mean_icc+0.005),size=2)+
+  scale_color_viridis(name="Mean ICC",direction=-1)+
+  scale_y_continuous(breaks=seq(0.2,0.5,0.1),limits=c(0.2,0.5))+
+  scale_alpha_continuous(range=c(0.2,1))+
+  theme_cowplot(font_size=20)+
+  theme(legend.position="none")+
+  ylab("Mean ICC")+
+  xlab("Analysis Window (in ms)")
+ggsave(here(figure_path,"reliability_window_segment_innovation_2.png"),width=10,height=6,dpi=600)
+
+
+ggplot(filter(acc_params_summary,object=="administration"),aes(color=mean_icc,alpha=highlight_start_4))+
+  geom_vline(xintercept=0,linetype="dashed",size=1.2)+
+  annotate("text", x = -600, y = 0.5, label = "Target Onset", size=7) +
+  geom_segment(aes(x=t_start,xend=t_end,y=mean_icc,yend=mean_icc),size=2)+
+  geom_segment(aes(x=t_start,xend=t_start,y=mean_icc-0.005,yend=mean_icc+0.005),size=2)+
+  geom_segment(aes(x=t_end,xend=t_end,y=mean_icc-0.005,yend=mean_icc+0.005),size=2)+
+  scale_color_viridis(name="Mean ICC",direction=-1)+
+  scale_y_continuous(breaks=seq(0.2,0.5,0.1),limits=c(0.2,0.5))+
+  scale_alpha_continuous(range=c(0.2,1))+
+  theme_cowplot(font_size=20)+
+  theme(legend.position="none")+
+  ylab("Mean ICC")+
+  xlab("Analysis Window (in ms)")
+ggsave(here(figure_path,"reliability_window_segment_innovation_3.png"),width=10,height=6,dpi=600)
+
+
 ```
 
 
@@ -413,6 +476,32 @@ ggplot(acc_params_byage, aes(x = t_start, y = icc, col = as.factor(t_end))) +
 ```
 
 Here we see that the younger kids lose more reliability when the window is short, but otherwise the conclusions remain unchanged. 
+
+```{r}
+acc_params_byage_summary <- acc_params_byage %>%
+  group_by(younger,t_start,t_end,object) %>%
+  summarize(
+    N=n(),
+    mean_icc=mean(icc,na.rm=TRUE)
+  ) %>%
+  mutate(
+    window_size = t_end-t_start
+  ) %>%
+  mutate(
+    age=ifelse(younger,">=24 months","<24 months")
+  )
+
+ggplot(filter(acc_params_byage_summary,object=="administration"),aes(x=t_start,y=t_end,fill=mean_icc))+
+  geom_tile(color="white")+
+  scale_fill_viridis(name="Mean ICC\n(by-subject)",option="inferno")+
+  theme_cowplot()+
+  scale_x_continuous(breaks=c(-1000,-500,0,500,1000,1500))+
+  xlab("Window Start Time (in ms)")+
+  ylab("Window End Time (in ms)")+
+  facet_wrap(~age)
+ggsave(here(figure_path,"reliability_window_grid_ICC_subject_byage.png"),width=10,height=6,dpi=600)
+```
+
 
 # Measure 2: Baseline-corrected accuracy
 

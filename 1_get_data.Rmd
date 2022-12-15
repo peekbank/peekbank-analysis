@@ -93,6 +93,7 @@ d_trial <- aoi_data_joined |>
                                "hurtado_2008", 
                                "kartushina_2019",
                                "weisleder_stl",
+                               "xsectional_2007",
                                "pomper_dimy"))) |>
   filter(age > 12, age <= 60, 
          stimulus_novelty == "familiar",
