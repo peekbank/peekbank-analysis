@@ -50,6 +50,21 @@ lmm_fit <- lmer(elogit ~ log_age_centered * animate_target +
                 data = d_acc_bc, 
                 control = lmerControl(optimizer="bobyqa"))
 
+d_acc_bc <- d_acc_bc %>%
+  mutate(
+    animate_target_c = ifelse(animate_target,0.5,-0.5),
+    animate_distractor_c=ifelse(animate_distractor,0.5,-0.5)
+  )
+
+lmm_fit <- lmer(elogit ~ log_age_centered * animate_target_c + 
+                  log_age_centered * animate_distractor_c +
+                  (1 | administration_id) + 
+                  (log_age_centered | dataset_name) + 
+                  (log_age_centered | target_label) + 
+                  (1 | distractor_label), 
+                data = d_acc_bc, 
+                control = lmerControl(optimizer="bobyqa"))
+summary(lmm_fit)
 
 ```
 
