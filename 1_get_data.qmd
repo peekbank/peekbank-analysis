@@ -17,8 +17,7 @@ FIXME: we ideally want to figure out a more sustainable way to deal with this do
 We load the frame-level data. 
 
 ```{r}
-load(file = here("..", "peekbank-method", "cached_intermediates", "1_d_trial.Rds"))
-d_aoi <- d_trial # horrible old naming convention, FIXME
+load(file = here("..", "peekbank-method", "cached_intermediates", "1_d_aoi.Rds"))
 ```
 
 
