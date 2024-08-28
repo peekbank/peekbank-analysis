@@ -48,7 +48,7 @@ d_trial <- d_aoi |>
          long_window_elogit = log((long_window_target + .5) / (long_window_distractor + .5)))
 ```
 
-Compute RTs, relying on the RLE workflow from the shiny app. (we tested this back in the day at least). 
+Compute RTs, relying on the RLE workflow from the shiny app. (We tested this extensively back in the `peekbank-shiny` repo). 
 
 ```{r}
 d_rle <- d_aoi |>
@@ -103,7 +103,7 @@ We are also going to NA-out RTs if we have less than 50% data in the short windo
 Finally, it will make life easier for now if we filter kids >= 12months. We can revisit this. 
 
 ```{r}
-d_trial_rt <- d_trial_rt_unfiltered |>
+d_trial <- d_trial_rt_unfiltered |>
   filter(!(is.na(short_window_prop_data) & is.na(long_window_prop_data)), 
          !(short_window_prop_data < .5 & long_window_prop_data < .5), 
          age >= 12) |>
@@ -122,7 +122,7 @@ d_trial_rt <- d_trial_rt_unfiltered |>
 Now let's look at a summary. 
 
 ```{r}
-d_trial_rt |>
+d_trial |>
   ungroup() |>
   summarise(n = n(), 
             avg_acc_short = mean(short_window_accuracy, na.rm=TRUE),
@@ -140,7 +140,7 @@ d_trial_rt |>
 And dataset-wise. 
 
 ```{r}
-d_trial_rt |>
+d_trial |>
   group_by(dataset_name) |>
   summarise(n = n(), 
             avg_acc_short = mean(short_window_accuracy, na.rm=TRUE),
@@ -160,7 +160,7 @@ Look at some histograms.
 Short window. 
 
 ```{r}
-ggplot(d_trial_rt, 
+ggplot(d_trial, 
        aes(x = short_window_accuracy)) +
   geom_histogram() + 
   facet_wrap(~dataset_name, scales = "free_y")
@@ -170,7 +170,7 @@ ggplot(d_trial_rt,
 Long window.
 
 ```{r}
-ggplot(d_trial_rt, 
+ggplot(d_trial, 
        aes(x = long_window_accuracy)) +
   geom_histogram() + 
   facet_wrap(~dataset_name, scales = "free_y")
@@ -178,16 +178,24 @@ ggplot(d_trial_rt,
 RTs. 
 
 ```{r}
-ggplot(d_trial_rt, 
+ggplot(d_trial, 
        aes(x = rt)) +
   geom_histogram() + 
   facet_wrap(~dataset_name, scales = "free_y")
 ```
 
+# Create subject-level RDS as well
+
+```{r}
+d_sub <- d_trial |>
+  group_by(dataset_name, administration_id, age) |>
+  summarise(across(c(contains("_window"),"rt","log_rt"), ~mean(.x, na.rm=TRUE)))
+```
 
 # Save data
 
 ```{r}
-saveRDS(d_trial_rt, here("cached_intermediates","1_d_trial_rt"))
+saveRDS(d_trial, here("cached_intermediates","1_d_trial"))
+saveRDS(d_sub, here("cached_intermediates","1_d_sub"))
 ```
 
