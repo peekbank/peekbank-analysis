@@ -20,25 +20,10 @@ knitr::opts_chunk$set(cache.extra = knitr::rand_seed, cache = TRUE,
                       message=FALSE, warning=FALSE, error=FALSE)
 
 source(here("helper", "lmer_helper.R"))
-load(file = here("cached_intermediates","1_d_trial.Rds"))
 ```
 
 Our goal here is to model trial-level variation in accuracy for familiar word recognition across all the experiments in Peekbank. 
 
-Let's move forward with ALL THE DATA (tm). Window will be something like 500 -- 4000 based on the above analysis (which is incomplete, but which suggested that using all the data was better than not).
-
-```{r}
-df <- d_trial |>
-    filter(t_norm > 500, t_norm < 4000) |>
-    group_by(dataset_name, dataset_id, administration_id, 
-             age, trial_id, target_label, distractor_label) |>
-    summarise(accuracy = mean(correct[t_norm > 0], na.rm=TRUE),
-              prop_data = mean(!is.na(correct[t_norm > 0])), 
-              target = sum(correct[t_norm > 0], na.rm=TRUE),
-              distractor = sum(!correct[t_norm > 0], na.rm=TRUE), 
-              elogit = log( (target + .5) / (distractor + .5) )) 
-df <- df[complete.cases(df),]
-```
 
 # Descriptives
 

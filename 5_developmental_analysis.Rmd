@@ -1,7 +1,7 @@
 ---
 title: "5: Developmental analyses"
 author: "Peekbank team"
-date: "2022-08-17"
+date: "2022-08-17, updated 2024-08-27"
 output: html_document
 ---
 
@@ -11,6 +11,7 @@ library(peekbankr)
 library(lme4)
 library(ggrepel)
 library(ggthemes)
+
 library(glue)
 library(tidyverse)
 #also needs GGally and ggbiplot but one of these irresponsibly sources plyr
