@@ -77,6 +77,20 @@ d_trial_rt_unfiltered <- d_trial |>
 
 # Filtering
 
+Check out age distribution.
+
+```{r}
+ages <- d_trial_rt |>
+  group_by(administration_id) |>
+  summarise(age = mean(age)) 
+
+
+ggplot(ages, aes(x = age)) + 
+  geom_histogram()
+
+sum(ages < 12)
+```
+
 We have NA and NaN (average of all NAs) throughout. 
 - rows with zero data in both windows should be removed
 - elogits for zero data in one window should be NA'd out. 
@@ -86,10 +100,13 @@ Also, let's get rid of trials with very limited amounts of data. Classically we 
 
 We are also going to NA-out RTs if we have less than 50% data in the short window, just because we think that's going to mess up the computation. 
 
+Finally, it will make life easier for now if we filter kids >= 12months. We can revisit this. 
+
 ```{r}
 d_trial_rt <- d_trial_rt_unfiltered |>
   filter(!(is.na(short_window_prop_data) & is.na(long_window_prop_data)), 
-         !(short_window_prop_data < .5 & long_window_prop_data < .5)) |>
+         !(short_window_prop_data < .5 & long_window_prop_data < .5), 
+         age >= 12) |>
   mutate(across(contains("window"), ~ ifelse(is.na(.x), NA, .x))) |>
   mutate(short_window_accuracy = ifelse(short_window_prop_data >= .5, short_window_accuracy, NA),
          long_window_accuracy = ifelse(long_window_prop_data >= .5, long_window_accuracy, NA),
