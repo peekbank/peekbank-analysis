@@ -16,6 +16,7 @@ library(lme4)
 library(ggthemes)
 library(ggrepel)
 library(glue)
+library(cowplot)
 
 # Seed for random number generation
 set.seed(42)
@@ -24,6 +25,8 @@ knitr::opts_chunk$set(cache.extra = knitr::rand_seed, cache = TRUE,
 
 load(file = here("cached_intermediates","3A_d_acc.Rds"))
 load(file = here("cached_intermediates","3B_d_rt.Rds"))
+
+figure_path <- here("figures")
 
 d_acc <- filter(d_acc, dataset_id != "pomper_dimy")
 d_rt <- filter(d_rt, dataset_id != "pomper_dimy")
@@ -159,6 +162,19 @@ ggplot(filter(sim_range, n>100), aes(x = similarity, y = accuracy)) +
   ylab("elogit(accuracy)") +
   theme_few() +
   geom_label_repel(aes(label = pairing))
+```
+
+For BU presentation
+
+```{r}
+ggplot(filter(sim_range, n>100), aes(x = similarity, y = accuracy)) + 
+  geom_point(aes(size = n)) + 
+  geom_smooth(method = "lm", mapping = aes(weight = n)) + 
+  xlab("THINGS similarity") + 
+  ylab("elogit(accuracy)") +
+  theme_cowplot(font_size=20) +
+  geom_label_repel(aes(label = pairing))
+ggsave(here(figure_path,"similarity_effects.png"),width=10,height=6,dpi=600)
 ```
 Just for kicks, let's see the correlation numbers. 
 

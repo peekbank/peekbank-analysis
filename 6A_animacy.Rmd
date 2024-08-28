@@ -13,14 +13,18 @@ library(lme4)
 library(ggpmisc)
 library(ggrepel)
 library(ggthemes)
+library(cowplot)
 
 # Seed for random number generation
 set.seed(42)
 knitr::opts_chunk$set(cache.extra = knitr::rand_seed, cache = TRUE, 
                       message=FALSE, warning=FALSE, error=FALSE)
 
-load(file = here("data","3A_d"))
-load(file = here("data","3B_d_rt.Rds"))
+figure_path <- here("figures")
+
+load(file = here("cached_intermediates","3A_d_acc_bc.Rds"))
+load(file = here("cached_intermediates","3A_d_acc.Rds"))
+load(file = here("cached_intermediates","3B_d_rt.Rds"))
 ```
 
 
@@ -37,15 +41,30 @@ mod_rt <- lmer(log_rt ~ log_age_centered +
 Accuracy model:
 
 ```{r}
-mod_acc <- lmer(elogit_baseline ~ log_age_centered * animate_target + 
+lmm_fit <- lmer(elogit ~ log_age_centered * animate_target + 
                   log_age_centered * animate_distractor +
                   (1 | administration_id) + 
                   (log_age_centered | dataset_name) + 
                   (log_age_centered | target_label) + 
                   (1 | distractor_label), 
-                data = df_clean_bc, 
+                data = d_acc_bc, 
                 control = lmerControl(optimizer="bobyqa"))
 
+d_acc_bc <- d_acc_bc %>%
+  mutate(
+    animate_target_c = ifelse(animate_target,0.5,-0.5),
+    animate_distractor_c=ifelse(animate_distractor,0.5,-0.5)
+  )
+
+lmm_fit <- lmer(elogit ~ log_age_centered * animate_target_c + 
+                  log_age_centered * animate_distractor_c +
+                  (1 | administration_id) + 
+                  (log_age_centered | dataset_name) + 
+                  (log_age_centered | target_label) + 
+                  (1 | distractor_label), 
+                data = d_acc_bc, 
+                control = lmerControl(optimizer="bobyqa"))
+summary(lmm_fit)
 
 ```
 
@@ -80,5 +99,42 @@ preds <- preds |>
   ggthemes::theme_few()
 
 
+```
+
+Plots for presenting
+
+```{r}
+
+ggplot(d_acc,
+       aes(x = age, y = elogit)) + 
+  geom_point(alpha = .01, height = 0,position = position_jitter(seed = 42,width=0.2))+
+  geom_line(data = preds, 
+            aes(y = .pred, col = animate_target, lty = animate_distractor), 
+            size = 1.5) + 
+  geom_hline(lty = 2, yintercept = 0) + 
+  scale_x_continuous(breaks = c(12,24,36,48,60)) + 
+  scale_color_solarized(name = "Target",breaks=c(FALSE,TRUE),labels=c("Inanimate","Animate")) + 
+  scale_linetype(name = "Distractor",breaks=c(FALSE,TRUE),labels=c("Inanimate","Animate")) + 
+  ylab("Trial-level accuracy (elogit)") + 
+  xlab("Age (months)") + 
+  theme_cowplot(font_size=20)
+ggsave(here(figure_path,"animacy_effects.png"),width=10,height=6,dpi=600)
+
+ggplot(d_acc,
+       aes(x = age, y = elogit)) + 
+  geom_point(alpha = .01, height = 0,position = position_jitter(seed = 42,width=0.2),color=NA,fill=NA)+
+  geom_line(data = preds, 
+            aes(y = .pred, col = animate_target, lty = animate_distractor), 
+            size = 1.5,
+            color=NA,
+            fill=NA) + 
+  geom_hline(lty = 2, yintercept = 0) + 
+  scale_x_continuous(breaks = c(12,24,36,48,60)) + 
+  scale_color_solarized(name = "Target",breaks=c(FALSE,TRUE),labels=c("Inanimate","Animate")) + 
+  scale_linetype(name = "Distractor",breaks=c(FALSE,TRUE),labels=c("Inanimate","Animate")) + 
+  ylab("Trial-level accuracy (elogit)") + 
+  xlab("Age (months)") + 
+  theme_cowplot(font_size=20)
+ggsave(here(figure_path,"animacy_effects_setup.png"),width=10,height=6,dpi=600)
 ```
 

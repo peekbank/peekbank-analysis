@@ -1,0 +1,384 @@
+---
+title: "5: Developmental analyses"
+author: "Peekbank team"
+date: "2022-08-17"
+output: html_document
+---
+
+```{r setup, echo = FALSE, message = FALSE}
+library(here)
+library(peekbankr)
+library(lme4)
+library(ggrepel)
+library(ggthemes)
+library(glue)
+library(tidyverse)
+library(AICcmodavg)
+#also needs GGally and ggbiplot but one of these irresponsibly sources plyr
+
+
+# Seed for random number generation
+set.seed(42)
+knitr::opts_chunk$set(cache.extra = knitr::rand_seed, cache = TRUE, 
+                      message=FALSE, warning=FALSE, error=FALSE)
+
+figure_path <- here("figures")
+
+load(file = here("cached_intermediates","3A_d_acc.Rds"))
+load(file = here("cached_intermediates","3B_d_rt.Rds"))
+```
+
+One thing that we learn from Analysis 3 that is reiterated here is that the best summaries seem to be:
+
+* elogit(accuracy) for accuracy - note this involves excluding some trials in which elogit is at floor or ceiling because of zoning. we think this doesn't help OR hurt.
+* log(age) - development follows some kind of exponential so logging makes it more linear.
+* log(rt) - reaction times are somewhat log normal in distribution.
+
+All of these variable transformations serve to "linearize" these various different measures that all have distributions that are otherwise not as amenable to modeling.
+
+Our goal here is to look at how these measures change together - both across age and across participants. 
+
+# General development: Accuracy
+
+First let's just look at average and predicted accuracy trajectories with development. 
+
+```{r}
+ms_acc <- d_acc |>
+  ungroup() |>
+  group_by(dataset_name, administration_id, age) |>
+  summarise(n_accuracy = n(), 
+            accuracy = mean(accuracy, na.rm=TRUE), 
+            elogit = mean(elogit, na.rm=TRUE)) |>
+  mutate(log_age = log(age))
+
+labels <- data_frame(age = c(12,24,36,48), y = -1) |>
+  mutate(log_age = log(age), 
+         age_mo = paste(as.character(age), "months"))
+
+ref_75 <- log( (75 + .5) / (25 + .5) )
+
+ggplot(ms_acc, aes(x = log_age, y = elogit)) + 
+  geom_jitter(alpha = .1, width = .02, height = 0) + 
+  geom_smooth(method = "lm") +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_hline(yintercept = ref_75, lty = 2) +
+  annotate("text", x = log(12), y = 0, label = "50% correct", vjust = -.25, hjust = 0) +
+  annotate("text", x = log(12), y = ref_75, label = "75% correct", vjust = -.25, hjust = 0) + 
+  geom_vline(data = labels, 
+             aes(xintercept = log_age), lty = 3) + 
+  geom_text(data = labels, 
+             aes(x = log_age, y = y, label = age_mo), lty = 3, hjust = 0) + 
+  xlab("log(age)") +
+  ylab("elogit (accuracy)") + 
+  theme_few() +
+  ggtitle(glue("Accuracy increases with age (N={nrow(ms_acc)})"))
+```
+
+## model taking items into account
+
+```{r}
+d_acc <- d_acc |>
+  mutate(log_age = log(age))
+
+m_acc <- lmer(elogit~log_age+(1|dataset_id)+(1|administration_id)+(1|target_label),data=d_acc)
+summary(m_acc)
+
+predictions_acc <- data.frame(log_age=seq(min(d_acc$log_age),max(d_acc$log_age),by=0.1))
+pY_acc <- predictSE(m_acc,predictions_acc,re.form=NA)
+predictions_acc$elogit=pY_acc$fit
+predictions_acc$elogit_se=pY_acc$se.fit
+
+ggplot(ms_acc, aes(x = log_age, y = elogit)) + 
+  geom_jitter(alpha = .1, width = .02, height = 0) + 
+  #geom_smooth(method="loess",color="#1b9e77")+
+  geom_smooth(method = "lm",color="#7570b3") +
+  #geom_line(data=predictions,color="#d95f02",size=1.5)+
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_hline(yintercept = ref_75, lty = 2) +
+  annotate("text", x = log(12), y = 0, label = "50% correct", vjust = -.25, hjust = 0) +
+  annotate("text", x = log(12), y = ref_75, label = "75% correct", vjust = -.25, hjust = 0) + 
+  geom_vline(data = labels, 
+             aes(xintercept = log_age), lty = 3) + 
+  geom_text(data = labels, 
+             aes(x = log_age, y = y, label = age_mo), lty = 3, hjust = 0) + 
+  xlab("log(age)") +
+  ylab("elogit (accuracy)") + 
+  theme_few() +
+  ggtitle(glue("Accuracy increases with age (N={nrow(ms_acc)})"))
+ggsave(here(figure_path,"accuracy_lm.png"),width=10,height=6,dpi=600)
+
+ggplot(ms_acc, aes(x = log_age, y = elogit)) + 
+  geom_jitter(alpha = .1, width = .02, height = 0) + 
+  geom_smooth(method="loess",color="#1b9e77")+
+  geom_smooth(method = "lm",color="#7570b3") +
+  #geom_line(data=predictions,color="#d95f02",size=1.5)+
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_hline(yintercept = ref_75, lty = 2) +
+  annotate("text", x = log(12), y = 0, label = "50% correct", vjust = -.25, hjust = 0) +
+  annotate("text", x = log(12), y = ref_75, label = "75% correct", vjust = -.25, hjust = 0) + 
+  geom_vline(data = labels, 
+             aes(xintercept = log_age), lty = 3) + 
+  geom_text(data = labels, 
+             aes(x = log_age, y = y, label = age_mo), lty = 3, hjust = 0) + 
+  xlab("log(age)") +
+  ylab("elogit (accuracy)") + 
+  theme_few() +
+  ggtitle(glue("Accuracy increases with age (N={nrow(ms_acc)})"))
+ggsave(here(figure_path,"accuracy_lm_smooth.png"),width=10,height=6,dpi=600)
+
+ggplot(ms_acc, aes(x = log_age, y = elogit)) + 
+  geom_jitter(alpha = .1, width = .02, height = 0) + 
+  geom_smooth(method="loess",color="#1b9e77")+
+  geom_smooth(method = "lm",color="#7570b3") +
+  geom_line(data=predictions,color="#d95f02",size=1.5)+
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_hline(yintercept = ref_75, lty = 2) +
+  annotate("text", x = log(12), y = 0, label = "50% correct", vjust = -.25, hjust = 0) +
+  annotate("text", x = log(12), y = ref_75, label = "75% correct", vjust = -.25, hjust = 0) + 
+  geom_vline(data = labels, 
+             aes(xintercept = log_age), lty = 3) + 
+  geom_text(data = labels, 
+             aes(x = log_age, y = y, label = age_mo), lty = 3, hjust = 0) + 
+  xlab("log(age)") +
+  ylab("elogit (accuracy)") + 
+  theme_few() +
+  ggtitle(glue("Accuracy increases with age (N={nrow(ms_acc)})"))
+ggsave(here(figure_path,"accuracy_lm_smooth_predictions.png"),width=10,height=6,dpi=600)
+
+ggplot(ms_acc, aes(x = log_age, y = elogit)) + 
+  geom_point(alpha = .1, width = .02, height = 0,position = position_jitter(seed = 42))+
+  #geom_smooth(method="loess",color="#1b9e77")+
+  #geom_smooth(method = "lm",color="#7570b3") +
+  geom_smooth(data=predictions_acc,aes(ymin=elogit-elogit_se,ymax=elogit+elogit_se),color="#7570b3",size=1.5,stat="identity")+
+  
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_hline(yintercept = ref_75, lty = 2) +
+  annotate("text", x = log(12), y = 0, label = "50% correct", vjust = 1.25, hjust = 0,size=6) +
+  annotate("text", x = log(12), y = ref_75, label = "75% correct", vjust = 1.25, hjust = 0,size=6) + 
+  geom_vline(data = labels, 
+             aes(xintercept = log_age), lty = 3) + 
+  geom_text(data = labels, 
+             aes(x = log_age, y = y, label = age_mo), lty = 3, hjust = -0.1,size=6) + 
+  xlab("log(age)") +
+  ylab("elogit (accuracy)") + 
+  theme_cowplot(font_size=20)# +
+  #ggtitle(glue("Accuracy increases with age (N={nrow(ms_acc)})"))
+ggsave(here(figure_path,"accuracy_lm_predictions_only.png"),width=10,height=6,dpi=600)
+
+ggplot(ms_acc, aes(x = log_age, y = elogit)) + 
+  geom_point(alpha = .1, width = .02, height = 0,position = position_jitter(seed = 42),color=NA,fill=NA)+
+  #geom_smooth(method="loess",color="#1b9e77")+
+  #geom_smooth(method = "lm",color="#7570b3") +
+  geom_smooth(data=predictions_acc,aes(ymin=elogit-elogit_se,ymax=elogit+elogit_se),color=NA,size=1.5,stat="identity",fill=NA)+
+  
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_hline(yintercept = ref_75, lty = 2) +
+  annotate("text", x = log(12), y = 0, label = "50% correct", vjust = 1.25, hjust = 0,size=6) +
+  annotate("text", x = log(12), y = ref_75, label = "75% correct", vjust = 1.25, hjust = 0,size=6) + 
+  geom_vline(data = labels, 
+             aes(xintercept = log_age), lty = 3) + 
+  geom_text(data = labels, 
+             aes(x = log_age, y = y, label = age_mo), lty = 3, hjust = -0.1,size=6) + 
+  xlab("log(age)") +
+  ylab("elogit (accuracy)") + 
+  theme_cowplot(font_size=20)# +
+  #geom_blank()# +
+  #ggtitle(glue("Accuracy increases with age (N={nrow(ms_acc)})"))
+ggsave(here(figure_path,"accuracy_lm_predictions_setup.png"),width=10,height=6,dpi=600)
+
+ggplot(ms_acc, aes(x = log_age, y = elogit)) + 
+  geom_point(alpha = .1, width = .02, height = 0,position = position_jitter(seed = 42))+
+  #geom_smooth(method = "lm",color="#7570b3") +
+  geom_smooth(data=predictions_acc,aes(ymin=elogit-elogit_se,ymax=elogit+elogit_se),color="#7570b3",size=1.5,stat="identity")+
+  geom_smooth(method="loess",color="#1b9e77",size=1.5)+
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_hline(yintercept = ref_75, lty = 2) +
+  annotate("text", x = log(12), y = 0, label = "50% correct", vjust = 1.25, hjust = 0,size=6) +
+  annotate("text", x = log(12), y = ref_75, label = "75% correct", vjust = 1.25, hjust = 0,size=6) + 
+  geom_vline(data = labels, 
+             aes(xintercept = log_age), lty = 3) + 
+  geom_text(data = labels, 
+             aes(x = log_age, y = y, label = age_mo), lty = 3, hjust = -0.1,size=6) + 
+  xlab("log(age)") +
+  ylab("elogit (accuracy)") + 
+  theme_cowplot(font_size=20)# +
+  #ggtitle(glue("Accuracy increases with age (N={nrow(ms_acc)})"))
+ggsave(here(figure_path,"accuracy_lm_predictions_smooth.png"),width=10,height=6,dpi=600)
+                                
+```
+
+
+
+# General developmental changes in RT
+
+```{r}
+ms_rt <- d_rt |>
+  ungroup() |>
+  group_by(dataset_name, administration_id, age) |>
+  summarise(n_rt = n(),
+            rt = mean(rt, na.rm=TRUE),
+            log_rt = mean(log_rt, na.rm=TRUE)) |>
+  mutate(log_age = log(age))
+
+```
+
+Now plot. 
+
+```{r}
+labels <- data_frame(age = c(12,24,36,48), y = log(300)) |>
+  mutate(log_age = log(age), 
+         age_mo = paste(as.character(age), "months"))
+
+ref_750 <- log(750)
+ref_1000 <- log(1000)
+
+ggplot(ms_rt, aes(x = log_age, y = log_rt)) + 
+  geom_jitter(alpha = .1, width = .02, height = 0) + 
+  geom_smooth(method = "lm") +
+  geom_hline(yintercept = ref_750, lty = 2) +
+  geom_hline(yintercept = ref_1000, lty = 2) +
+  annotate("text", x = log(12), y = ref_750, label = "750 ms", vjust = -.25, hjust = 0) +
+  annotate("text", x = log(12), y = ref_1000, label = "1000 ms", vjust = -.25, hjust = 0) + 
+  geom_vline(data = labels, 
+             aes(xintercept = log_age), lty = 3) + 
+  geom_text(data = labels, 
+             aes(x = log_age, y = y, label = age_mo), lty = 3, hjust = 0) + 
+  xlab("log(age)") +
+  ylab("log(RT)") + 
+  theme_few() +
+  ggtitle(glue("Reaction time decreases with age (N={nrow(ms_acc)})"))
+ggsave(here(figure_path,"rt_lm_only.png"),width=10,height=6,dpi=600)
+```
+
+## model taking items into account
+
+```{r}
+d_rt  <- d_rt |>
+  mutate(log_age = log(age))
+
+m_rt <- lmer(log_rt~log_age+(1|dataset_id)+(1|administration_id)+(1|target_label),data=d_rt)
+summary(m_rt)
+
+predictions_rt <- data.frame(log_age=seq(min(d_acc$log_age),max(d_acc$log_age),by=0.1))
+pY_rt <- predictSE(m_rt,predictions_rt,re.form=NA)
+predictions_rt$log_rt=pY_rt$fit
+predictions_rt$log_rt_se=pY_rt$se.fit
+
+
+ggplot(ms_rt, aes(x = log_age, y = log_rt)) + 
+  geom_jitter(alpha = .1, width = .02, height = 0) + 
+  #geom_smooth(method = "lm") +
+  geom_smooth(data=predictions_rt,aes(ymin=log_rt-log_rt_se,ymax=log_rt+log_rt_se),color="#7570b3",size=1.2,stat="identity")+
+  geom_hline(yintercept = ref_750, lty = 2) +
+  geom_hline(yintercept = ref_1000, lty = 2) +
+  annotate("text", x = log(12), y = ref_750, label = "750 ms", vjust = -.25, hjust = 0,size=6) +
+  annotate("text", x = log(12), y = ref_1000, label = "1000 ms", vjust = -.25, hjust = 0,size=6) + 
+  geom_vline(data = labels, 
+             aes(xintercept = log_age), lty = 3) + 
+  geom_text(data = labels, 
+             aes(x = log_age, y = y, label = age_mo), lty = 3, hjust = -0.1,size=6) + 
+  xlab("log(age)") +
+  ylab("log(RT)") + 
+  theme_cowplot(font_size=20)
+ggsave(here(figure_path,"rt_lm_predictions_only.png"),width=10,height=6,dpi=600)
+
+```
+
+# Relation between RT and accuracy 
+
+OK, let's take a look at these subject and word-level measures. 
+
+
+```{r}
+
+acc_rt <- inner_join(ms_acc, ms_rt) |>
+  mutate(age_group_years = cut(age, breaks = c(12,24,36,48,60)))
+
+head(acc_rt)
+```
+
+
+Take a look at correlations to select variables. 
+
+```{r}
+GGally::ggpairs(select(ungroup(acc_rt), -dataset_name, -age_group_years, -n_accuracy, -n_rt, -administration_id), 
+        progress = FALSE, lower = list(continuous = GGally::wrap("points", alpha = 0.03)))
+
+```
+It turns out that the correlations between elogit(accuracy), log(age), and log(rt) are all stronger. So we'll adopt these. 
+
+
+```{r}
+GGally::ggpairs(select(ungroup(acc_rt), elogit, log_rt, log_age), 
+        progress = FALSE, lower = list(continuous = GGally::wrap("points", alpha = 0.03)))
+
+```
+
+So these are somewhat related to one another. Let's take a deeper look. 
+
+```{r}
+ggplot(acc_rt, aes(x = log_rt, y = elogit, col = log_age)) +
+  geom_point(alpha = .3) +
+  geom_smooth(method = "lm") +
+  geom_hline(yintercept = .5, lty = 2) + 
+  xlab("Mean log RT") + 
+  ylab("Mean elogit(accuracy)")
+```
+
+Broken out by age group. 
+
+```{r}
+ggplot(acc_rt, aes(x = log_rt, y = elogit)) +
+  geom_point(alpha = .3) +
+  geom_smooth(method = "lm") +
+  geom_hline(yintercept = .5, lty = 2) +
+  facet_wrap(~age_group_years) + 
+  xlab("Mean log RT") + 
+  ylab("Mean elogit accuracy")
+
+  
+```
+
+By dataset. 
+
+```{r}
+ggplot(acc_rt, aes(x = log_rt, y = elogit, col = log_age)) +
+  geom_point(alpha = .3) +
+  geom_smooth(method = "lm") +
+  geom_hline(yintercept = .5, lty = 2) +
+  facet_wrap(~dataset_name) + 
+  xlab("Mean log RT") + 
+  ylab("Mean elogit accuracy")
+
+```
+
+## Dimensionality reduction
+
+Let's do principal components analysis over the scaled variables. 
+
+```{r}
+acc_rt_mat <- acc_rt |>
+  ungroup() |>
+  select(log_age, elogit, log_rt) |>
+  mutate(log_age = scale(log_age)[,1], 
+         log_rt = scale(log_rt)[,1],
+         elogit = scale(elogit)[,1] )|>
+  as.matrix()
+
+acc_rt_prc <- prcomp(acc_rt_mat, 2)
+
+acc_rt_prc
+summary(acc_rt_prc)
+ggbiplot::ggbiplot(acc_rt_prc, alpha = .1)
+
+
+```
+
+We see that there is a first component with ~60% of variance that is "faster, more accurate, older". Then we see a second component that relates to younger, faster, slightly less accurate. And the final piece is older and less accurate.
+
+These would be interesting components to connect to CDI. In some sense, the claim of some of the Fernald processing corpus is that there is a second principal component here (namely, processing speed) that is meaningful and relates to later learning outcomes. 
+
+# Conclusions
+
+Probably right now we need to try and connect this to CDIs...
+
