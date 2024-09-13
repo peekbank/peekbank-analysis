@@ -105,7 +105,7 @@ Let's look at one dataset. Here are the stimulus and administration ICCs for Swi
 
 ```{r}
 sa <- d_summary |> 
-  filter(dataset_name == "swingley_aslin_2002")
+  filter(dataset_name == "reflook_v4")
 
 sa_cleaned <- filter(sa, 
                      !(target_label %in% c("bird","duck","shoe","truck")))
@@ -280,7 +280,7 @@ I find this surprising and want to double check from other perspectives.
 
 These simulations use ICCs as a way to understand how we summarize accuracy data. In particular, we're going to look at how ICCs change as a function of window size. 
 
-```{r warning=FALSE, message=FALSE, error=FALSE, eval=FALSE}
+```{r warning=FALSE, message=FALSE, error=FALSE, eval=TRUE}
 icc_window_sim <- function (t_start = -500, t_end = 4000, object) 
 {
   print(paste(t_start, t_end))
@@ -289,7 +289,9 @@ icc_window_sim <- function (t_start = -500, t_end = 4000, object)
     filter(t_norm > t_start, t_norm < t_end) |>
     group_by(dataset_name, dataset_id, administration_id, target_label, trial_id) |>
     summarise(accuracy = mean(correct, na.rm=TRUE),
-              prop_data = mean(!is.na(correct)))
+              prop_data = mean(!is.na(correct))) |>
+    #make sure to filter NAs for accuracy
+    filter(!is.na(accuracy))
   
   # compute ICCs
   df |> 
@@ -306,7 +308,14 @@ acc_params <- expand_grid(t_start = seq(-1000,1500,500),
   mutate(icc = pmap(list(t_start, t_end, object), icc_window_sim)) |>
   unnest(col = icc)
 
+acc_params_extended <- expand_grid(t_start = seq(-1000,1500,50),
+                          t_end = seq(2000,4000,50),
+                          object = c("stimulus", "administration")) |>
+  mutate(icc = pmap(list(t_start, t_end, object), icc_window_sim)) |>
+  unnest(col = icc)
+
 save(file = "cached_intermediates/2_acc_params.Rds", acc_params)
+save(file = "cached_intermediates/2_acc_params_extended.Rds", acc_params_extended)
 ```
 
 ```{r}
@@ -359,12 +368,12 @@ ggsave(here(figure_path,"reliability_window_grid_overall.png"),width=10,height=6
 
 ggplot(filter(acc_params_summary,object=="administration"),aes(color=mean_icc))+
   geom_vline(xintercept=0,linetype="dashed",size=1.2)+
-  annotate("text", x = -600, y = 0.5, label = "Target Onset", size=7) +
+  annotate("text", x = -600, y = 0.45, label = "Target Onset", size=7) +
   geom_segment(aes(x=t_start,xend=t_end,y=mean_icc,yend=mean_icc),size=2)+
   geom_segment(aes(x=t_start,xend=t_start,y=mean_icc-0.005,yend=mean_icc+0.005),size=2)+
   geom_segment(aes(x=t_end,xend=t_end,y=mean_icc-0.005,yend=mean_icc+0.005),size=2)+
   scale_color_viridis(name="Mean ICC",direction=-1)+
-  scale_y_continuous(breaks=seq(0.2,0.5,0.1),limits=c(0.2,0.5))+
+  scale_y_continuous(breaks=seq(0.15,0.45,0.1),limits=c(0.15,0.45))+
   theme_cowplot(font_size=20)+
   theme(legend.position="none")+
   ylab("Mean ICC")+
@@ -382,12 +391,12 @@ acc_params_summary <- acc_params_summary %>%
 
 ggplot(filter(acc_params_summary,object=="administration"),aes(color=mean_icc,alpha=highlight_start_1))+
   geom_vline(xintercept=0,linetype="dashed",size=1.2)+
-  annotate("text", x = -600, y = 0.5, label = "Target Onset", size=7) +
+  annotate("text", x = -600, y = 0.45, label = "Target Onset", size=7) +
   geom_segment(aes(x=t_start,xend=t_end,y=mean_icc,yend=mean_icc),size=2)+
   geom_segment(aes(x=t_start,xend=t_start,y=mean_icc-0.005,yend=mean_icc+0.005),size=2)+
   geom_segment(aes(x=t_end,xend=t_end,y=mean_icc-0.005,yend=mean_icc+0.005),size=2)+
   scale_color_viridis(name="Mean ICC",direction=-1)+
-  scale_y_continuous(breaks=seq(0.2,0.5,0.1),limits=c(0.2,0.5))+
+  scale_y_continuous(breaks=seq(0.15,0.45,0.1),limits=c(0.15,0.45))+
   scale_alpha_continuous(range=c(0.2,1))+
   theme_cowplot(font_size=20)+
   theme(legend.position="none")+
@@ -397,12 +406,12 @@ ggsave(here(figure_path,"reliability_window_segment_innovation_1.png"),width=10,
 
 ggplot(filter(acc_params_summary,object=="administration"),aes(color=mean_icc,alpha=highlight_start_3))+
   geom_vline(xintercept=0,linetype="dashed",size=1.2)+
-  annotate("text", x = -600, y = 0.5, label = "Target Onset", size=7) +
+  annotate("text", x = -600, y = 0.45, label = "Target Onset", size=7) +
   geom_segment(aes(x=t_start,xend=t_end,y=mean_icc,yend=mean_icc),size=2)+
   geom_segment(aes(x=t_start,xend=t_start,y=mean_icc-0.005,yend=mean_icc+0.005),size=2)+
   geom_segment(aes(x=t_end,xend=t_end,y=mean_icc-0.005,yend=mean_icc+0.005),size=2)+
   scale_color_viridis(name="Mean ICC",direction=-1)+
-  scale_y_continuous(breaks=seq(0.2,0.5,0.1),limits=c(0.2,0.5))+
+  scale_y_continuous(breaks=seq(0.15,0.45,0.1),limits=c(0.15,0.45))+
   scale_alpha_continuous(range=c(0.2,1))+
   theme_cowplot(font_size=20)+
   theme(legend.position="none")+
@@ -413,12 +422,12 @@ ggsave(here(figure_path,"reliability_window_segment_innovation_2.png"),width=10,
 
 ggplot(filter(acc_params_summary,object=="administration"),aes(color=mean_icc,alpha=highlight_start_4))+
   geom_vline(xintercept=0,linetype="dashed",size=1.2)+
-  annotate("text", x = -600, y = 0.5, label = "Target Onset", size=7) +
+  annotate("text", x = -600, y = 0.45, label = "Target Onset", size=7) +
   geom_segment(aes(x=t_start,xend=t_end,y=mean_icc,yend=mean_icc),size=2)+
   geom_segment(aes(x=t_start,xend=t_start,y=mean_icc-0.005,yend=mean_icc+0.005),size=2)+
   geom_segment(aes(x=t_end,xend=t_end,y=mean_icc-0.005,yend=mean_icc+0.005),size=2)+
   scale_color_viridis(name="Mean ICC",direction=-1)+
-  scale_y_continuous(breaks=seq(0.2,0.5,0.1),limits=c(0.2,0.5))+
+  scale_y_continuous(breaks=seq(0.15,0.45,0.1),limits=c(0.15,0.45))+
   scale_alpha_continuous(range=c(0.2,1))+
   theme_cowplot(font_size=20)+
   theme(legend.position="none")+
@@ -429,6 +438,41 @@ ggsave(here(figure_path,"reliability_window_segment_innovation_3.png"),width=10,
 
 ```
 
+### Finer-grained sampling
+
+```{r}
+load(file = "cached_intermediates/2_acc_params_extended.Rds")
+
+acc_params_extended_summary <- acc_params_extended %>%
+  group_by(t_start,t_end,object) %>%
+  summarize(
+    N=n(),
+    mean_icc=mean(icc,na.rm=TRUE)
+  ) %>%
+  mutate(
+    window_size = t_end-t_start
+  )
+
+ggplot(filter(acc_params_extended_summary,object=="administration"),aes(x=t_start,y=t_end,fill=mean_icc))+
+  geom_tile(color="white")+
+  scale_fill_viridis(name="Mean ICC\n(by-subject)",option="inferno")+
+  theme_cowplot()+
+  scale_x_continuous(breaks=c(-1000,-500,0,500,1000,1500))+
+  xlab("Window Start Time (in ms)")+
+  ylab("Window End Time (in ms)")
+ggsave(here(figure_path,"reliability_window_grid_ICC_subject_extended.png"),width=10,height=6,dpi=600)
+
+ggplot(acc_params_extended_summary,aes(x=t_start,y=t_end,fill=mean_icc))+
+  geom_tile(color="white")+
+  scale_fill_viridis(name="Mean ICC",option="inferno")+
+  theme_cowplot()+
+  scale_x_continuous(breaks=c(-1000,-500,0,500,1000,1500))+
+  xlab("Window Start Time (in ms)")+
+  ylab("Window End Time (in ms)")+
+  facet_wrap(~object)
+ggsave(here(figure_path,"reliability_window_grid_overall_extended.png"),width=10,height=6,dpi=600)
+
+```
 
 ## Window size by age
 
@@ -438,6 +482,8 @@ Let's do one more simulation where we check if this result holds across two ages
 ```{r warning=FALSE, message=FALSE, error=FALSE, eval=TRUE}
 icc_window_sim <- function (t_start = 0, t_end = 4000, object) 
 {
+  print(paste(t_start, t_end))
+  
   df <- d_trial |>
     mutate(younger = age < 24) |>
     filter(t_norm > t_start, t_norm < t_end) |>
@@ -455,8 +501,9 @@ icc_window_sim <- function (t_start = 0, t_end = 4000, object)
     unnest(cols = c()) 
 }
 
-acc_params_byage <- expand_grid(t_start = seq(0,1500,500),
-                                t_end = seq(2000,4000,500),
+#-1000,1500,50
+acc_params_byage <- expand_grid(t_start = seq(-1000,1500,50),
+                                t_end = seq(2000,4000,50),
                                 object = c("stimulus", "administration")) |>
   mutate(icc = pmap(list(t_start, t_end, object), icc_window_sim)) |>
   unnest(col = icc)
@@ -469,10 +516,10 @@ Now plot.
 ```{r}
 load(file = "cached_intermediates/2_acc_params_byage.Rds")
 
-ggplot(acc_params_byage, aes(x = t_start, y = icc, col = as.factor(t_end))) + 
-  geom_jitter() + 
-  facet_grid(younger~object) + 
-  geom_smooth(aes(group = as.factor(t_end)), se = FALSE)
+# ggplot(acc_params_byage, aes(x = t_start, y = icc, col = as.factor(t_end))) + 
+#   geom_jitter() + 
+#   facet_grid(younger~object) + 
+#   geom_smooth(aes(group = as.factor(t_end)), se = FALSE)
 ```
 
 Here we see that the younger kids lose more reliability when the window is short, but otherwise the conclusions remain unchanged. 
@@ -502,6 +549,76 @@ ggplot(filter(acc_params_byage_summary,object=="administration"),aes(x=t_start,y
 ggsave(here(figure_path,"reliability_window_grid_ICC_subject_byage.png"),width=10,height=6,dpi=600)
 ```
 
+
+### More fine-grained ages
+
+```{r warning=FALSE, message=FALSE, error=FALSE, eval=TRUE}
+icc_window_sim <- function (t_start = 0, t_end = 4000, object) 
+{
+  df <- d_trial |>
+    mutate(age_bin = case_when(
+      age < 18 ~ "12-18 months",
+      age < 24 ~ "18-24 months",
+      age < 36 ~ "24-36 months",
+      TRUE ~ "36+ months"
+    )) |>
+    filter(t_norm > t_start, t_norm < t_end) |>
+    group_by(dataset_name, dataset_id, age_bin, administration_id, 
+             target_label, trial_id) |>
+    summarise(accuracy = mean(correct, na.rm=TRUE),
+              prop_data = mean(!is.na(correct)))
+  
+  # compute ICCs
+  df |> 
+    group_by(dataset_name, age_bin) |> 
+    nest() |>
+    mutate(icc = unlist(map(data, ~get_icc(., "accuracy", object)))) |>
+    select(-data) |>
+    unnest(cols = c()) 
+}
+
+acc_params_byagebins <- expand_grid(t_start = seq(0,1500,500),
+                                t_end = seq(2000,4000,500),
+                                object = c("stimulus", "administration")) |>
+  mutate(icc = pmap(list(t_start, t_end, object), icc_window_sim)) |>
+  unnest(col = icc)
+
+save(file = "cached_intermediates/2_acc_params_byagebins.Rds", acc_params_byage)
+```
+
+Now plot. 
+
+```{r}
+load(file = "cached_intermediates/2_acc_params_byagebins.Rds")
+
+ggplot(acc_params_byagebins, aes(x = t_start, y = icc, col = as.factor(t_end))) + 
+  geom_jitter() + 
+  facet_grid(age_bin~object) + 
+  geom_smooth(aes(group = as.factor(t_end)), se = FALSE)
+```
+
+
+```{r}
+acc_params_byagebins_summary <- acc_params_byagebins %>%
+  group_by(age_bin,t_start,t_end,object) %>%
+  summarize(
+    N=n(),
+    mean_icc=mean(icc,na.rm=TRUE)
+  ) %>%
+  mutate(
+    window_size = t_end-t_start
+  )
+
+ggplot(filter(acc_params_byagebins_summary,object=="administration"),aes(x=t_start,y=t_end,fill=mean_icc))+
+  geom_tile(color="white")+
+  scale_fill_viridis(name="Mean ICC\n(by-subject)",option="inferno")+
+  theme_cowplot()+
+  scale_x_continuous(breaks=c(-1000,-500,0,500,1000,1500))+
+  xlab("Window Start Time (in ms)")+
+  ylab("Window End Time (in ms)")+
+  facet_wrap(~age_bin)
+ggsave(here(figure_path,"reliability_window_grid_ICC_subject_byagebins.png"),width=10,height=6,dpi=600)
+```
 
 # Measure 2: Baseline-corrected accuracy
 

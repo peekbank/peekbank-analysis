@@ -14,6 +14,8 @@ library(ggpmisc)
 library(ggrepel)
 library(ggthemes)
 library(lmerTest)
+library(viridis)
+library(cowplot)
 
 # Seed for random number generation
 set.seed(42)
@@ -33,6 +35,19 @@ d_trial_summary <- d_trial %>%
             post_accuracy = mean(correct[t_norm > 0], na.rm = TRUE))
 
 d_trial_summary <- d_trial_summary %>%
+  #sort by trial order for each administration with a dataset
+  arrange(dataset_id, administration_id, trial_order) %>%
+  #count target label instances in order
+  group_by(dataset_id,administration_id,target_label) %>%
+  mutate(
+    target_label_instance = seq(1,n()),
+    total_target_label = n()
+  ) %>%
+  ungroup()
+
+d_trial_summary <- d_trial_summary %>%
+  group_by(dataset_id, administration_id, trial_id, trial_order, 
+           age, target_id, target_label, distractor_label) %>%
   # we put in stimulus pair alphabetically because it needs to be in a consistent order
   # so that we can group by the pairing and not by pairing x target
   mutate(stim_pair = paste(sort(c(target_label, distractor_label)), collapse = "_")) %>% 
@@ -117,5 +132,147 @@ rep_timecourse %>%
   geom_vline(xintercept=0)+
   geom_hline(yintercept=0.5,linetype="dashed") +
   theme_bw()
-
 ```
+
+## Trial Order Explorations: Part II
+
+```{r}
+t_start <- 300
+t_end <- 2000
+baseline_start <- -2000
+baseline_end <- 0
+
+trial_acc <- d_trial %>%
+  group_by(dataset_id, administration_id, trial_id, trial_order, 
+           age, target_id, target_label, distractor_label) %>%
+  summarise(
+    window_accuracy = mean(correct[t_norm >= t_start & t_norm <= t_end], na.rm = TRUE),
+    baseline_accuracy = mean(correct[t_norm >= baseline_start & t_norm <= baseline_end], na.rm = TRUE),
+    baseline_size = sum(t_norm >= baseline_start & t_norm <= baseline_end, na.rm = TRUE))
+
+trial_acc <- trial_acc %>%
+  # we put in stimulus pair alphabetically because it needs to be in a consistent order
+  # so that we can group by the pairing and not by pairing x target
+  mutate(stim_pair = paste(sort(c(target_label, distractor_label)), collapse = "_")) %>% 
+  #set trial number sequentially based on trial_order
+  group_by(dataset_id, administration_id) %>%
+  mutate(trial_num = row_number()) %>%
+  ungroup() %>%
+  arrange(dataset_id, administration_id, trial_order) %>%
+  group_by(dataset_id, administration_id, stim_pair) %>%
+  mutate(instance = seq(1,n())) %>% # instance is how many times you've seen this pair of stimuli
+  ungroup() %>%
+  group_by(dataset_id, administration_id, stim_pair, target_label) %>%
+  mutate(target_instance = seq(1,n())) %>% # target instance is how many times you've seen this pair of stimuli with this target as a target
+  ungroup()
+
+#join into d_trial
+d_trial <- d_trial %>%
+  left_join(trial_acc)
+```
+
+```{r}
+#summarize by trial number
+d_trial_block_by_subj <- d_trial %>%
+  group_by(dataset_id, administration_id) %>%
+  mutate(max_trial_num = max(trial_num,na.rm=TRUE)) %>%
+  mutate(trial_block = case_when(
+    trial_num<=5 ~ "trials 1-5",
+    trial_num<=10 ~ "trials 6-10",
+    trial_num<=15 ~ "trials 11-15",
+    trial_num<=20 ~ "trials 16-20",
+    trial_num<=25 ~ "trials 21-25",
+    trial_num<=30 ~ "trials 26-30",
+    trial_num<=35 ~ "trials 31-35",
+    trial_num<=40 ~ "trials 36-40",
+    TRUE ~ "trials >40"
+  )) %>%
+  group_by(dataset_id, administration_id, trial_block,t_norm) %>%
+  summarize(
+    n_trials=n(),
+    mean_acc = mean(correct, na.rm = TRUE),
+    max_trial_num = max_trial_num[1]
+  ) 
+
+d_trial_block_by_subj_summarized <- d_trial_block_by_subj %>%
+  #filter(max_trial_num>=30) %>%
+  ungroup() %>%
+  group_by(trial_block,t_norm) %>%
+  summarize(
+    N=n(),
+    mean_accuracy = mean(mean_acc, na.rm = TRUE),
+    sd_accuracy = sd(mean_acc, na.rm = TRUE),
+    se_accuracy = sd(mean_acc, na.rm = TRUE)/sqrt(N),
+    lower_ci = mean_accuracy - 1.96*se_accuracy,
+    upper_ci = mean_accuracy + 1.96*se_accuracy
+  )%>%
+  filter(t_norm >= -2000, t_norm <= 3500)
+
+ggplot(filter(d_trial_block_by_subj_summarized,trial_block %in% c("trials 1-5","trials 6-10","trials 11-15","trials 16-20","trials 21-25","trials 26-30")),aes(x=t_norm,y=mean_accuracy,color=trial_block,fill=trial_block))+
+  geom_hline(yintercept=0.5, linetype="dashed")+
+  geom_vline(xintercept=0)+
+  geom_vline(xintercept=300,linetype="dotted")+
+  geom_ribbon(aes(ymin=lower_ci,ymax=upper_ci),alpha=0.05,color=NA)+
+  geom_line()+
+  theme_cowplot()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_x_continuous(name="Time",breaks=seq(-2000,3000,1000))+
+  scale_color_viridis_d(
+    name = "Trial Block",
+    limits=c("trials 1-5","trials 6-10","trials 11-15","trials 16-20","trials 21-25","trials 26-30")
+  )+
+  scale_fill_viridis_d(
+    name = "Trial Block",
+    limits=c("trials 1-5","trials 6-10","trials 11-15","trials 16-20","trials 21-25","trials 26-30")
+  )+
+  ylab("Mean Accuracy")
+```
+
+## Summarize by target occurrence
+```{r}
+d_trial <- d_trial %>%
+  left_join(d_trial_summary)
+
+#summarize within participant and target occurrence
+d_target_freq_by_subj <- d_trial %>%
+  filter(total_target_label>=4) %>%
+  group_by(dataset_id, administration_id, target_label_instance,t_norm) %>%
+  summarize(
+    n_trials=n(),
+    mean_acc = mean(correct, na.rm = TRUE)
+  ) 
+
+d_target_freq_by_subj_summarized <- d_target_freq_by_subj %>%
+  ungroup() %>%
+  group_by(target_label_instance,t_norm) %>%
+  summarize(
+    N=n(),
+    mean_accuracy = mean(mean_acc, na.rm = TRUE),
+    sd_accuracy = sd(mean_acc, na.rm = TRUE),
+    se_accuracy = sd(mean_acc, na.rm = TRUE)/sqrt(N),
+    lower_ci = mean_accuracy - 1.96*se_accuracy,
+    upper_ci = mean_accuracy + 1.96*se_accuracy
+  )%>%
+  filter(t_norm >= -2000, t_norm <= 3500) %>%
+  mutate(
+    target_label_instance_f = paste0("Occurrence ",target_label_instance)
+  )
+
+ggplot(filter(d_target_freq_by_subj_summarized,target_label_instance<=2),aes(x=t_norm,y=mean_accuracy,color=target_label_instance_f,fill=target_label_instance_f))+
+  geom_hline(yintercept=0.5, linetype="dashed")+
+  geom_vline(xintercept=0)+
+  geom_vline(xintercept=300,linetype="dotted")+
+  geom_ribbon(aes(ymin=lower_ci,ymax=upper_ci),alpha=0.05,color=NA)+
+  geom_line()+
+  theme_cowplot()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_x_continuous(name="Time",breaks=seq(-2000,3000,1000))+
+  scale_color_viridis_d(
+    name = "Target Occurrence Number"
+  )+
+  scale_fill_viridis_d(
+    name = "Target Occurrence Number"
+  )+
+  ylab("Mean Accuracy")
+```
+

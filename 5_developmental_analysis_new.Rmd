@@ -207,6 +207,42 @@ ggsave(here(figure_path,"accuracy_lm_predictions_smooth.png"),width=10,height=6,
                                 
 ```
 
+Model comparisons
+
+```{r}
+d_acc <- d_acc |>
+  ungroup() |> 
+  mutate(log_age_c = log_age - mean(log_age),
+         log_age_c_sq = log_age_c^2)
+
+## check whether log age fits better than raw age
+
+#fit model with raw age
+m_acc_raw_age <- lmer(elogit~age+(1|dataset_id)+(1|administration_id)+(1|target_label),data=d_acc)
+summary(m_acc_raw_age)
+
+#compare with log-age model
+anova(m_acc,m_acc_raw_age)
+#better model fit (lower AIC and BIC) with log-age-based model
+
+#quick visualization to show why
+ggplot(ms_acc, aes(x = age, y = elogit)) + 
+  geom_jitter(alpha = .1, width = .02, height = 0) + 
+  geom_smooth(method="loess",color="#1b9e77")+
+  geom_smooth(method = "lm",color="#7570b3")
+
+## check whether a quadratic term improves model fit
+
+#center log age
+m_acc_c<- lmer(elogit~log_age_c+(1|dataset_id)+(1|administration_id)+(1|target_label),data=d_acc)
+#center age and make quadratic
+m_acc_quad_age <- lmer(elogit~log_age_c+log_age_c_sq+(1|dataset_id)+(1|administration_id)+(1|target_label),data=d_acc)
+summary(m_acc_quad_age)
+
+#adding quadratic effect does not improve model fit
+#BIC/ AIC actually lower for linear model
+anova(m_acc_c,m_acc_quad_age)
+```
 
 
 # General developmental changes in RT
